@@ -52,7 +52,19 @@
 
         public var controller: TerminalController? {
             get { core.controller }
-            set { core.controller = newValue }
+            set {
+                core.controller = newValue
+                // A freshly created controller defaults to `.light` and only
+                // learns the real system appearance via `updateColorScheme()`,
+                // which normally runs from `didMoveToWindow()`. That won't
+                // fire again for a view that's already attached to a window
+                // when its controller is swapped out from under it (e.g. a
+                // host app replacing the controller after a reconnect), so
+                // the new controller would otherwise stay stuck on `.light`.
+                if window != nil {
+                    updateColorScheme()
+                }
+            }
         }
 
         public var configuration: TerminalSurfaceOptions {
