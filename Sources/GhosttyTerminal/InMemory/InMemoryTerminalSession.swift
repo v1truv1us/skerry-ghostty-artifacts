@@ -123,10 +123,19 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
     // MARK: - Receiving Data
 
     /// Feed data into the terminal from the host backend.
+    ///
+    /// Reads `surface` under `lock` but releases it before calling into
+    /// Ghostty: `ghostty_surface_write_buffer` can synchronously trigger
+    /// actions (e.g. `GHOSTTY_ACTION_CELL_SIZE` → `synchronizeMetrics()` →
+    /// `HostManaged.resize()`) that call back into `dispatchResize()` on the
+    /// same thread. `NSLock` isn't reentrant, so holding it across the call
+    /// would deadlock the calling thread on that reentrant `lock()`.
     public func receive(_ data: Data) {
         lock.lock()
-        defer { lock.unlock() }
-        guard let surface else {
+        let activeSurface = surface
+        lock.unlock()
+
+        guard let activeSurface else {
             TerminalDebugLog.log(
                 .output,
                 "terminal <- host dropped \(TerminalDebugLog.describe(data))"
@@ -143,7 +152,7 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
             guard let ptr = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
                 return
             }
-            ghostty_surface_write_buffer(surface, ptr, UInt(buffer.count))
+            ghostty_surface_write_buffer(activeSurface, ptr, UInt(buffer.count))
         }
     }
 
@@ -168,10 +177,16 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
     // MARK: - Process Exit
 
     /// Signal that the host-managed process has exited.
+    ///
+    /// Same reasoning as `receive(_:)`: read `surface` under `lock`, then
+    /// release it before the call, since `ghostty_surface_process_exit` can
+    /// also synchronously trigger callbacks that reenter this session's lock.
     public func finish(exitCode: UInt32, runtimeMilliseconds: UInt64) {
         lock.lock()
-        defer { lock.unlock() }
-        guard let surface else {
+        let activeSurface = surface
+        lock.unlock()
+
+        guard let activeSurface else {
             TerminalDebugLog.log(
                 .lifecycle,
                 "process exit ignored: missing surface exitCode=\(exitCode) runtimeMs=\(runtimeMilliseconds)"
@@ -183,7 +198,7 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
             .lifecycle,
             "process exit exitCode=\(exitCode) runtimeMs=\(runtimeMilliseconds)"
         )
-        ghostty_surface_process_exit(surface, exitCode, runtimeMilliseconds)
+        ghostty_surface_process_exit(activeSurface, exitCode, runtimeMilliseconds)
     }
 
     // MARK: - C Callbacks
