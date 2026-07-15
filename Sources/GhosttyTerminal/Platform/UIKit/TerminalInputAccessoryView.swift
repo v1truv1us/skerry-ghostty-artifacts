@@ -82,6 +82,15 @@
             makeKeyButton(title: symbol, key: .symbol(symbol))
         }
 
+        private lazy var hideKeyboardButton: AccessoryButton = {
+            let button = AccessoryButton(size: buttonSize) { [weak terminalView] in
+                terminalView?.resignFirstResponder()
+            }
+            button.accessibilityLabel = "Hide Keyboard"
+            button.setImage(UIImage(systemName: "keyboard.chevron.compact.down"), for: .normal)
+            return button
+        }()
+
         private lazy var modifierButtons: [(TerminalStickyModifierState.Modifier, AccessoryButton)] = [
             (.ctrl, ctrlButton),
             (.alt, altButton),
@@ -129,6 +138,7 @@
             downButton.applyRegularStyle(style)
             rightButton.applyRegularStyle(style)
             pasteButton.applyRegularStyle(style)
+            hideKeyboardButton.applyRegularStyle(style)
             symbolButtons.forEach { $0.applyRegularStyle(style) }
 
             ctrlButton.applyModifierStyle(ctrlActivation, isDisabled: hasMarkedText, style: style)
@@ -167,9 +177,15 @@
             scrollView.clipsToBounds = true
             blurView.contentView.addSubview(scrollView)
 
+            blurView.contentView.addSubview(hideKeyboardButton)
+            NSLayoutConstraint.activate([
+                hideKeyboardButton.trailingAnchor.constraint(equalTo: blurView.contentView.trailingAnchor, constant: -10),
+                hideKeyboardButton.centerYAnchor.constraint(equalTo: blurView.contentView.centerYAnchor),
+            ])
+
             NSLayoutConstraint.activate([
                 scrollView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor),
-                scrollView.trailingAnchor.constraint(equalTo: blurView.contentView.trailingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: hideKeyboardButton.leadingAnchor, constant: -8),
                 scrollView.topAnchor.constraint(equalTo: blurView.contentView.topAnchor),
                 scrollView.bottomAnchor.constraint(equalTo: blurView.contentView.bottomAnchor),
             ])
