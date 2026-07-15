@@ -14,8 +14,8 @@
             didSet { refreshContent() }
         }
 
-        private let barHeight: CGFloat = 52
-        private let buttonSize: CGFloat = 36
+        private let barHeight: CGFloat = 60
+        private let buttonSize: CGFloat = 44
 
         private lazy var blurView = UIVisualEffectView(
             effect: makeBarEffect()
@@ -326,6 +326,7 @@
         private let size: CGFloat
         private let handler: () -> Void
         private let lockIndicator = UIView()
+        private let selectionFeedback = UISelectionFeedbackGenerator()
 
         init(size: CGFloat, handler: @escaping () -> Void) {
             self.size = size
@@ -362,8 +363,12 @@
             ])
 
             addAction(UIAction { [weak self] _ in
+                self?.selectionFeedback.selectionChanged()
                 self?.handler()
             }, for: .touchUpInside)
+            addAction(UIAction { [weak self] _ in
+                self?.selectionFeedback.prepare()
+            }, for: .touchDown)
         }
 
         @available(*, unavailable)
