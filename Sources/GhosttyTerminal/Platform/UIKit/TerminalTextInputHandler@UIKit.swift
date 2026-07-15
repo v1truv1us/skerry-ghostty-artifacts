@@ -30,6 +30,22 @@
             _ text: String,
             applyingStickyModifiers: Bool = false
         ) {
+            commitText(
+                text,
+                applyingStickyModifiers: applyingStickyModifiers,
+                asPaste: false
+            )
+        }
+
+        func pasteText(_ text: String) {
+            commitText(text, applyingStickyModifiers: false, asPaste: true)
+        }
+
+        private func commitText(
+            _ text: String,
+            applyingStickyModifiers: Bool,
+            asPaste: Bool
+        ) {
             guard let view else { return }
             let shouldNotifySelectionChange = shouldNotifySelectionChange
 
@@ -48,11 +64,17 @@
             #if !targetEnvironment(macCatalyst)
                 if applyingStickyModifiers {
                     _ = view.handleStickyCommittedText(text)
-                } else {
+                } else if asPaste {
                     view.surface?.sendText(text)
+                } else {
+                    sendSoftwareKeyboardText(text, through: view)
                 }
             #else
-                view.surface?.sendText(text)
+                if asPaste {
+                    view.surface?.sendText(text)
+                } else {
+                    sendSoftwareKeyboardText(text, through: view)
+                }
             #endif
             view.refreshInputAccessoryContent()
 
@@ -133,10 +155,10 @@
                     if applyingStickyModifiers {
                         _ = view.handleStickyCommittedText(committedText)
                     } else {
-                        view.surface?.sendText(committedText)
+                        sendSoftwareKeyboardText(committedText, through: view)
                     }
                 #else
-                    view.surface?.sendText(committedText)
+                    sendSoftwareKeyboardText(committedText, through: view)
                 #endif
             }
             view.refreshInputAccessoryContent()
@@ -249,6 +271,45 @@
             if let view {
                 view.inputDelegate?.selectionDidChange(view)
             }
+        }
+
+        private func sendSoftwareKeyboardText(
+            _ text: String,
+            through view: UITerminalView
+        ) {
+            guard case let .inMemory(session) = view.configuration.backend else {
+                view.surface?.sendText(text)
+                return
+            }
+
+            // `ghostty_surface_text` deliberately applies paste semantics. On
+            // iOS, UIKeyInput also uses insertText for ordinary software-keyboard
+            // typing, so that API would wrap each keyboard commit in bracketed
+            // paste markers whenever a TUI (including Codex) enables mode 2004.
+            // Plain committed text under the Kitty flags Codex requests remains
+            // UTF-8, with terminal Return represented as carriage return.
+            session.sendInput(Self.terminalInputBytes(for: text))
+        }
+
+        private static func terminalInputBytes(for text: String) -> Data {
+            let source = Array(text.utf8)
+            var result = Data(capacity: source.count)
+            var index = 0
+            while index < source.count {
+                let byte = source[index]
+                if byte == 0x0D {
+                    result.append(0x0D)
+                    if index + 1 < source.count, source[index + 1] == 0x0A {
+                        index += 1
+                    }
+                } else if byte == 0x0A {
+                    result.append(0x0D)
+                } else {
+                    result.append(byte)
+                }
+                index += 1
+            }
+            return result
         }
     }
 #endif

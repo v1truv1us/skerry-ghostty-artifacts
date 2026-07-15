@@ -22,7 +22,7 @@
             case .paste:
                 _ = stickyModifiers.consumeForNextKey()
                 if let text = UIPasteboard.general.string, !text.isEmpty {
-                    inputHandler.insertText(text)
+                    inputHandler.pasteText(text)
                 }
 
             case .esc:
@@ -112,7 +112,7 @@
         @discardableResult
         func handleStickyCommittedText(_ text: String) -> Bool {
             handleStickyTextInput(text) { [weak self] text in
-                self?.surface?.sendText(text)
+                self?.inputHandler.insertText(text)
             }
         }
 
