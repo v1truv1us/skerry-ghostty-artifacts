@@ -7,8 +7,8 @@
     import UIKit
 
     @MainActor
-    final class TerminalInputAccessoryView: UIView {
-        weak var terminalView: UITerminalView?
+    public final class TerminalInputBar: UIView {
+        public private(set) weak var terminalView: UITerminalView?
 
         var style: TerminalInputAccessoryStyle = .default {
             didSet { refreshContent() }
@@ -32,6 +32,11 @@
             systemImage: "escape",
             key: .esc
         )
+        private lazy var interruptButton = makeKeyButton(
+            title: "Interrupt (Control-C)",
+            systemImage: "stop.circle",
+            key: .interrupt
+        )
         private lazy var ctrlButton = makeModifierButton(
             title: "Control",
             systemImage: "control",
@@ -42,7 +47,7 @@
             systemImage: "option",
             modifier: .alt
         )
-        private lazy var commandButton = makeModifierButton(
+        private lazy var cmdButton = makeModifierButton(
             title: "Command",
             systemImage: "command",
             modifier: .command
@@ -51,6 +56,10 @@
             title: "Tab",
             systemImage: "arrow.right.to.line",
             key: .tab
+        )
+        private lazy var endButton = makeKeyButton(
+            title: "End",
+            key: .end
         )
         private lazy var leftButton = makeKeyButton(
             title: "Left",
@@ -77,14 +86,16 @@
             systemImage: "doc.on.clipboard",
             key: .paste
         )
+        private var customActionButtons: [AccessoryButton] = []
+        private lazy var customActionDivider = makeDivider()
 
         private lazy var symbolButtons: [AccessoryButton] = Self.symbols.map { symbol in
             makeKeyButton(title: symbol, key: .symbol(symbol))
         }
 
         private lazy var hideKeyboardButton: AccessoryButton = {
-            let button = AccessoryButton(size: buttonSize) { [weak terminalView] in
-                terminalView?.resignFirstResponder()
+            let button = AccessoryButton(size: buttonSize) { [weak self] in
+                self?.eligibleTerminalView?.window?.endEditing(true)
             }
             button.accessibilityLabel = "Hide Keyboard"
             button.setImage(UIImage(systemName: "keyboard.chevron.compact.down"), for: .normal)
@@ -94,10 +105,10 @@
         private lazy var modifierButtons: [(TerminalStickyModifierState.Modifier, AccessoryButton)] = [
             (.ctrl, ctrlButton),
             (.alt, altButton),
-            (.command, commandButton),
+            (.command, cmdButton),
         ]
 
-        init(terminalView: UITerminalView) {
+        public init(terminalView: UITerminalView? = nil) {
             self.terminalView = terminalView
             super.init(
                 frame: CGRect(
@@ -111,9 +122,7 @@
             setupViews()
             applyBarChrome()
             refreshContent()
-            terminalView.stickyModifiers.onChange = { [weak self] in
-                self?.refreshContent()
-            }
+            installChangeHandlers()
         }
 
         @available(*, unavailable)
@@ -121,29 +130,66 @@
             fatalError("init(coder:) has not been implemented")
         }
 
-        override var intrinsicContentSize: CGSize {
+        public override var intrinsicContentSize: CGSize {
             CGSize(width: UIView.noIntrinsicMetric, height: preferredHeight)
         }
 
+        public func setTerminalView(_ terminalView: UITerminalView?) {
+            guard self.terminalView !== terminalView else {
+                refreshContent()
+                return
+            }
+            self.terminalView?.setStickyModifierChangeHandler(nil)
+            self.terminalView?.hostInputBarContentDidChange = nil
+            self.terminalView = terminalView
+            installChangeHandlers()
+            refreshContent()
+        }
+
+        private var eligibleTerminalView: UITerminalView? {
+            guard let terminalView, terminalView.isResponderEligible else { return nil }
+            return terminalView
+        }
+
+        private func installChangeHandlers() {
+            terminalView?.setStickyModifierChangeHandler { [weak self] in
+                self?.refreshContent()
+            }
+            terminalView?.hostInputBarContentDidChange = { [weak self] in
+                self?.refreshContent()
+            }
+        }
+
         func refreshContent() {
+            refreshCustomActionButtons()
             let hasMarkedText = terminalView?.inputHandler.hasMarkedText ?? false
             let ctrlActivation = terminalView?.stickyModifiers.ctrl ?? .inactive
             let altActivation = terminalView?.stickyModifiers.alt ?? .inactive
-            let commandActivation = terminalView?.stickyModifiers.command ?? .inactive
+            let cmdActivation = terminalView?.stickyModifiers.command ?? .inactive
 
+            interruptButton.applyRegularStyle(style)
             escapeButton.applyRegularStyle(style)
             tabButton.applyRegularStyle(style)
+            endButton.applyRegularStyle(style)
             leftButton.applyRegularStyle(style)
             upButton.applyRegularStyle(style)
             downButton.applyRegularStyle(style)
             rightButton.applyRegularStyle(style)
             pasteButton.applyRegularStyle(style)
+            for (button, action) in zip(customActionButtons, terminalView?.inputAccessoryActions ?? []) {
+                button.applyModifierStyle(
+                    action.isSelected ? .armed : .inactive,
+                    isDisabled: false,
+                    style: style
+                )
+                button.accessibilityValue = action.isSelected ? "Active" : "Inactive"
+            }
             hideKeyboardButton.applyRegularStyle(style)
             symbolButtons.forEach { $0.applyRegularStyle(style) }
 
             ctrlButton.applyModifierStyle(ctrlActivation, isDisabled: hasMarkedText, style: style)
             altButton.applyModifierStyle(altActivation, isDisabled: hasMarkedText, style: style)
-            commandButton.applyModifierStyle(commandActivation, isDisabled: hasMarkedText, style: style)
+            cmdButton.applyModifierStyle(cmdActivation, isDisabled: hasMarkedText, style: style)
         }
 
         private func setupViews() {
@@ -205,12 +251,15 @@
             ])
 
             addArrangedViews([
+                customActionDivider,
+                interruptButton,
                 escapeButton,
                 ctrlButton,
                 altButton,
-                commandButton,
+                cmdButton,
                 makeDivider(),
                 tabButton,
+                endButton,
                 leftButton,
                 upButton,
                 downButton,
@@ -219,6 +268,30 @@
             ] + symbolButtons + [
                 pasteButton,
             ])
+        }
+
+        private func refreshCustomActionButtons() {
+            for button in customActionButtons {
+                stackView.removeArrangedSubview(button)
+                button.removeFromSuperview()
+            }
+
+            customActionButtons = (terminalView?.inputAccessoryActions ?? []).map { action in
+                let button = AccessoryButton(size: buttonSize) { [weak self] in
+                    guard let terminalView = self?.eligibleTerminalView else { return }
+                    terminalView.inputAccessoryActions.first { $0.id == action.id }?.handler()
+                }
+                button.accessibilityLabel = action.accessibilityLabel
+                let imageName = action.isSelected
+                    ? action.selectedSystemImage ?? action.systemImage
+                    : action.systemImage
+                button.setImage(UIImage(systemName: imageName), for: .normal)
+                return button
+            }
+            customActionDivider.isHidden = customActionButtons.isEmpty
+            for button in customActionButtons.reversed() {
+                stackView.insertArrangedSubview(button, at: 0)
+            }
         }
 
         private func addArrangedViews(_ views: [UIView]) {
@@ -242,8 +315,8 @@
             systemImage: String,
             modifier: TerminalStickyModifierState.Modifier
         ) -> AccessoryButton {
-            let button = AccessoryButton(size: buttonSize) { [weak terminalView] in
-                terminalView?.stickyModifiers.toggle(modifier)
+            let button = AccessoryButton(size: buttonSize) { [weak self] in
+                self?.eligibleTerminalView?.stickyModifiers.toggle(modifier)
             }
             button.accessibilityLabel = title
             button.setImage(UIImage(systemName: systemImage), for: .normal)
@@ -255,8 +328,8 @@
             systemImage: String? = nil,
             key: TerminalInputBarKey
         ) -> AccessoryButton {
-            let button = AccessoryButton(size: buttonSize) { [weak terminalView] in
-                terminalView?.handleInputBarKey(key)
+            let button = AccessoryButton(size: buttonSize) { [weak self] in
+                self?.eligibleTerminalView?.handleInputBarKey(key)
             }
             button.accessibilityLabel = title
 
@@ -335,7 +408,7 @@
             }
         }
 
-        private static let symbols = ["|", "/", "~", "-", "_", "`", "'", "\""]
+        private static let symbols: [String] = []
     }
 
     private final class AccessoryButton: UIButton {

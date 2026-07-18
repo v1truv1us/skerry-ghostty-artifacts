@@ -20,17 +20,6 @@
                 }
             #endif
             super.touchesBegan(touches, with: event)
-            #if targetEnvironment(macCatalyst)
-                becomeFirstResponder()
-            #else
-                pendingKeyboardDismissOnTouchEnd = false
-                touchDidScrollDuringCurrentTouch = false
-                if softwareKeyboardVisible {
-                    pendingKeyboardDismissOnTouchEnd = true
-                } else {
-                    becomeFirstResponder()
-                }
-            #endif
         }
 
         override public func touchesMoved(
@@ -54,13 +43,6 @@
                     return
                 }
             #endif
-            #if !targetEnvironment(macCatalyst)
-                if pendingKeyboardDismissOnTouchEnd, !touchDidScrollDuringCurrentTouch {
-                    resignFirstResponder()
-                }
-                pendingKeyboardDismissOnTouchEnd = false
-                touchDidScrollDuringCurrentTouch = false
-            #endif
             super.touchesEnded(touches, with: event)
         }
 
@@ -72,10 +54,6 @@
                 if handleIndirectPointerTouches(touches, phase: .cancelled, event: event) {
                     return
                 }
-            #endif
-            #if !targetEnvironment(macCatalyst)
-                pendingKeyboardDismissOnTouchEnd = false
-                touchDidScrollDuringCurrentTouch = false
             #endif
             super.touchesCancelled(touches, with: event)
         }
@@ -137,7 +115,6 @@
                     return false
                 }
 
-                becomeFirstResponder()
                 stopMomentumScrolling()
 
                 let button = pointerButton(from: event)
@@ -186,28 +163,152 @@
             }
         #else
             func setupTouchScrollInput() {
-                let gesture = UIPanGestureRecognizer(
+                let selectionGesture = UILongPressGestureRecognizer(
+                    target: self,
+                    action: #selector(handleTerminalSelectionGesture(_:))
+                )
+                selectionGesture.minimumPressDuration = 0.35
+                selectionGesture.allowableMovement = 28
+                addGestureRecognizer(selectionGesture)
+
+                let tapGesture = UITapGestureRecognizer(
+                    target: self,
+                    action: #selector(handleTerminalTapGesture(_:))
+                )
+                tapGesture.require(toFail: selectionGesture)
+                addGestureRecognizer(tapGesture)
+
+                let scrollGesture = UIPanGestureRecognizer(
                     target: self,
                     action: #selector(handleTouchScrollGesture(_:))
                 )
-                gesture.maximumNumberOfTouches = 1
-                addGestureRecognizer(gesture)
+                scrollGesture.maximumNumberOfTouches = 1
+                addGestureRecognizer(scrollGesture)
+                tapGesture.require(toFail: scrollGesture)
 
-                currentFontSize = configuration.fontSize ?? 14
+                let windowSwipeGesture = UIPanGestureRecognizer(
+                    target: self,
+                    action: #selector(handleTerminalWindowSwipeGesture(_:))
+                )
+                windowSwipeGesture.minimumNumberOfTouches = 2
+                windowSwipeGesture.maximumNumberOfTouches = 2
+                addGestureRecognizer(windowSwipeGesture)
+
+                addInteraction(terminalEditMenuInteraction)
+
+                currentFontSize = Self.validatedFontSize(configuration.fontSize ?? 12)
                 setupPinchZoomGesture()
             }
         #endif
+
+        @objc func handleTerminalTapGesture(_ gesture: UITapGestureRecognizer) {
+            handleTerminalTap(
+                state: gesture.state,
+                location: gesture.location(in: self)
+            )
+        }
+
+        func handleTerminalTap(
+            state: UIGestureRecognizer.State,
+            location: CGPoint
+        ) {
+            guard state == .ended else { return }
+            guard canBecomeFirstResponder else { return }
+            becomeFirstResponder()
+            guard let surface else { return }
+            let mods = ghostty_input_mods_e(rawValue: 0)
+            surface.sendMousePos(x: location.x, y: location.y, mods: mods)
+            surface.sendMouseButton(
+                state: GHOSTTY_MOUSE_PRESS,
+                button: GHOSTTY_MOUSE_LEFT,
+                mods: mods
+            )
+            surface.sendMouseButton(
+                state: GHOSTTY_MOUSE_RELEASE,
+                button: GHOSTTY_MOUSE_LEFT,
+                mods: mods
+            )
+        }
+
+        @objc func handleTerminalSelectionGesture(_ gesture: UILongPressGestureRecognizer) {
+            guard let surface else { return }
+            let location = gesture.location(in: self)
+
+            switch gesture.state {
+            case .began:
+                stopMomentumScrolling()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                terminalSelectionModifiers = surface.isMouseCaptured
+                    ? TerminalInputModifiers.shift.ghosttyMods
+                    : ghostty_input_mods_e(rawValue: 0)
+                isTerminalSelectionActive = true
+                surface.sendMousePos(
+                    x: location.x,
+                    y: location.y,
+                    mods: terminalSelectionModifiers
+                )
+                surface.sendMouseButton(
+                    state: GHOSTTY_MOUSE_PRESS,
+                    button: GHOSTTY_MOUSE_LEFT,
+                    mods: terminalSelectionModifiers
+                )
+
+            case .changed:
+                guard isTerminalSelectionActive else { return }
+                surface.sendMousePos(
+                    x: location.x,
+                    y: location.y,
+                    mods: terminalSelectionModifiers
+                )
+
+            case .ended:
+                guard isTerminalSelectionActive else { return }
+                finishTerminalSelection(at: location, showMenu: true)
+
+            case .cancelled, .failed:
+                guard isTerminalSelectionActive else { return }
+                finishTerminalSelection(at: location, showMenu: false)
+
+            default:
+                break
+            }
+        }
+
+        private func finishTerminalSelection(at location: CGPoint, showMenu: Bool) {
+            guard let surface else { return }
+            surface.sendMousePos(
+                x: location.x,
+                y: location.y,
+                mods: terminalSelectionModifiers
+            )
+            surface.sendMouseButton(
+                state: GHOSTTY_MOUSE_RELEASE,
+                button: GHOSTTY_MOUSE_LEFT,
+                mods: terminalSelectionModifiers
+            )
+            isTerminalSelectionActive = false
+
+            if showMenu {
+                terminalEditMenuInteraction.presentEditMenu(with: UIEditMenuConfiguration(
+                    identifier: nil,
+                    sourcePoint: location
+                ))
+            }
+        }
 
         @objc func handleTouchScrollGesture(
             _ gesture: UIPanGestureRecognizer
         ) {
             switch gesture.state {
             case .began:
-                #if !targetEnvironment(macCatalyst)
-                    touchDidScrollDuringCurrentTouch = true
-                #endif
                 TerminalDebugLog.log(.input, "touch scroll began")
                 stopMomentumScrolling()
+                tmuxScrollRemainder = 0
+                bufferedTouchScroll = .zero
+                touchScrollOwner = TerminalTouchScrollRouting.initialOwner(
+                    isMouseCaptured: surface?.isMouseCaptured == true,
+                    hasHostHandler: touchActionHandler != nil
+                )
 
             case .changed:
                 let translation = gesture.translation(in: self)
@@ -217,12 +318,31 @@
                     "touch scroll changed translation=\(String(format: "%.2f", translation.x))x\(String(format: "%.2f", translation.y))"
                 )
 
-                let scrollMods = TerminalScrollModifiers(precision: true)
-                surface?.sendMouseScroll(
-                    x: Double(translation.x * touchScrollMultiplier),
-                    y: Double(translation.y * touchScrollMultiplier),
-                    mods: scrollMods.rawValue
-                )
+                if touchScrollOwner == .terminal {
+                    sendTerminalScroll(translation)
+                } else if let touchActionHandler, abs(translation.y) >= abs(translation.x) {
+                    bufferedTouchScroll.x += translation.x
+                    bufferedTouchScroll.y += translation.y
+                    tmuxScrollRemainder += translation.y
+                    let rowCount = max(CGFloat(surface?.size()?.rows ?? 24), 1)
+                    let lineHeight = max(bounds.height / rowCount, 1)
+                    let lines = Int(tmuxScrollRemainder / lineHeight)
+                    if lines != 0 {
+                        if touchActionHandler(.verticalScroll(lines: lines)) {
+                            touchScrollOwner = .host
+                            tmuxScrollRemainder -= CGFloat(lines) * lineHeight
+                            bufferedTouchScroll = .zero
+                        } else {
+                            touchScrollOwner = .terminal
+                            sendTerminalScroll(bufferedTouchScroll)
+                            bufferedTouchScroll = .zero
+                            tmuxScrollRemainder = 0
+                        }
+                    }
+                } else {
+                    touchScrollOwner = .terminal
+                    sendTerminalScroll(translation)
+                }
 
             case .ended:
                 let velocity = gesture.velocity(in: self)
@@ -230,15 +350,54 @@
                     .input,
                     "touch scroll ended velocity=\(String(format: "%.2f", velocity.x))x\(String(format: "%.2f", velocity.y))"
                 )
-                startMomentumScrolling(velocity: velocity)
+                if touchScrollOwner == .host, let touchActionHandler {
+                    let velocityLines = max(-12, min(12, Int(velocity.y / 320)))
+                    if velocityLines != 0 {
+                        if !touchActionHandler(.verticalScroll(lines: velocityLines)) {
+                            startMomentumScrolling(velocity: velocity)
+                        }
+                    }
+                } else {
+                    if touchScrollOwner == .undecided, bufferedTouchScroll != .zero {
+                        sendTerminalScroll(bufferedTouchScroll)
+                    }
+                    startMomentumScrolling(velocity: velocity)
+                }
+                tmuxScrollRemainder = 0
+                bufferedTouchScroll = .zero
 
             case .cancelled, .failed:
                 TerminalDebugLog.log(.input, "touch scroll cancelled")
                 stopMomentumScrolling()
+                tmuxScrollRemainder = 0
+                bufferedTouchScroll = .zero
 
             default:
                 break
             }
+        }
+
+        private func sendTerminalScroll(_ translation: CGPoint) {
+            let scrollMods = TerminalScrollModifiers(precision: true)
+            surface?.sendMouseScroll(
+                x: Double(translation.x * touchScrollMultiplier),
+                y: Double(translation.y * touchScrollMultiplier),
+                mods: scrollMods.rawValue
+            )
+        }
+
+        @objc func handleTerminalWindowSwipeGesture(_ gesture: UIPanGestureRecognizer) {
+            guard gesture.state == .ended, let touchActionHandler else { return }
+            guard !pinchChangedFontSize else { return }
+            let translation = gesture.translation(in: self)
+            let velocity = gesture.velocity(in: self)
+            guard abs(translation.x) >= 44,
+                  abs(translation.x) > abs(translation.y),
+                  abs(velocity.x) > abs(velocity.y)
+            else { return }
+
+            let direction: TerminalHorizontalSwipeDirection = translation.x < 0 ? .left : .right
+            _ = touchActionHandler(.horizontalSwipe(direction))
         }
 
         func startMomentumScrolling(velocity: CGPoint) {
@@ -299,6 +458,40 @@
             momentumDisplayLink?.invalidate()
             momentumDisplayLink = nil
             momentumVelocity = .zero
+        }
+    }
+
+    extension UITerminalView: @MainActor UIEditMenuInteractionDelegate {
+        public func editMenuInteraction(
+            _: UIEditMenuInteraction,
+            menuFor _: UIEditMenuConfiguration,
+            suggestedActions _: [UIMenuElement]
+        ) -> UIMenu? {
+            var children: [UIMenuElement] = [
+                UIAction(
+                    title: "Copy",
+                    image: UIImage(systemName: "doc.on.doc")
+                ) { [weak self] _ in
+                    _ = self?.surface?.performBindingAction("copy_to_clipboard")
+                },
+            ]
+
+            // `hasStrings` is a non-consuming check: it does not read the
+            // pasteboard contents, so it never triggers the iOS paste banner
+            // just to decide whether to offer Paste.
+            if UIPasteboard.general.hasStrings {
+                children.append(
+                    UIAction(
+                        title: "Paste",
+                        image: UIImage(systemName: "doc.on.clipboard")
+                    ) { [weak self] _ in
+                        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+                        self?.inputHandler.pasteText(text)
+                    }
+                )
+            }
+
+            return UIMenu(children: children)
         }
     }
 #endif

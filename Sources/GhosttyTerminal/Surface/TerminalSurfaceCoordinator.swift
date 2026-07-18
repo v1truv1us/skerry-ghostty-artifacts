@@ -29,10 +29,12 @@ final class TerminalSurfaceCoordinator {
 
     var configuration: TerminalSurfaceOptions = .init() {
         didSet {
+            guard !isRecordingConfiguration else { return }
             guard !configuration.isEquivalent(to: oldValue) else { return }
             rebuildIfReady()
         }
     }
+    private var isRecordingConfiguration = false
 
     var surface: TerminalSurface?
     let bridge = TerminalCallbackBridge()
@@ -76,6 +78,13 @@ final class TerminalSurfaceCoordinator {
         bridge.onRenderRequest = { [weak self] in
             self?.requestImmediateTick()
         }
+    }
+
+    func recordFontSize(_ fontSize: Float) {
+        guard configuration.fontSize != fontSize else { return }
+        isRecordingConfiguration = true
+        configuration.fontSize = fontSize
+        isRecordingConfiguration = false
     }
 
     func requestImmediateTick() {

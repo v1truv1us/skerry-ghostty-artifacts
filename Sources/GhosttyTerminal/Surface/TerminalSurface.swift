@@ -34,12 +34,7 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.input, "surface key ignored: missing surface")
             return false
         }
-        let result = ghostty_surface_key(s, event)
-        TerminalDebugLog.log(
-            .input,
-            "surface key action=\(TerminalDebugLog.describe(event.action)) keycode=\(event.keycode) mods=0x\(String(event.mods.rawValue, radix: 16)) consumed=0x\(String(event.consumed_mods.rawValue, radix: 16)) text=\(terminalKeyText(event)) composing=\(event.composing) result=\(result)"
-        )
-        return result
+        return ghostty_surface_key(s, event)
     }
 
     func sendText(_ text: String) {
@@ -47,10 +42,6 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.input, "surface text ignored: missing surface")
             return
         }
-        TerminalDebugLog.log(
-            .input,
-            "surface text=\(TerminalDebugLog.describe(text))"
-        )
         text.withCString { cStr in
             ghostty_surface_text(s, cStr, UInt(text.utf8.count))
         }
@@ -66,12 +57,7 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.input, "surface mouse button ignored: missing surface")
             return false
         }
-        let result = ghostty_surface_mouse_button(s, state, button, mods)
-        TerminalDebugLog.log(
-            .input,
-            "surface mouseButton state=\(TerminalDebugLog.describe(state)) button=\(button.rawValue) mods=0x\(String(mods.rawValue, radix: 16)) result=\(result)"
-        )
-        return result
+        return ghostty_surface_mouse_button(s, state, button, mods)
     }
 
     func sendMousePos(x: Double, y: Double, mods: ghostty_input_mods_e) {
@@ -79,10 +65,6 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.input, "surface mouse position ignored: missing surface")
             return
         }
-        TerminalDebugLog.log(
-            .input,
-            "surface mousePos x=\(String(format: "%.2f", x)) y=\(String(format: "%.2f", y)) mods=0x\(String(mods.rawValue, radix: 16))"
-        )
         ghostty_surface_mouse_pos(s, x, y, mods)
     }
 
@@ -91,10 +73,6 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.input, "surface scroll ignored: missing surface")
             return
         }
-        TerminalDebugLog.log(
-            .input,
-            "surface scroll x=\(String(format: "%.2f", x)) y=\(String(format: "%.2f", y)) mods=0x\(String(mods, radix: 16))"
-        )
         ghostty_surface_mouse_scroll(s, x, y, mods)
     }
 
@@ -103,7 +81,6 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.ime, "surface preedit ignored: missing surface")
             return
         }
-        TerminalDebugLog.log(.ime, "surface preedit=\(TerminalDebugLog.describe(text))")
         text.withCString { cStr in
             ghostty_surface_preedit(s, cStr, UInt(text.utf8.count))
         }
@@ -117,14 +94,9 @@ public final class TerminalSurface {
             TerminalDebugLog.log(.actions, "binding action ignored: missing surface")
             return false
         }
-        let result = action.withCString { cStr in
+        return action.withCString { cStr in
             ghostty_surface_binding_action(s, cStr, UInt(action.utf8.count))
         }
-        TerminalDebugLog.log(
-            .actions,
-            "binding action=\(TerminalDebugLog.describe(action)) result=\(result)"
-        )
-        return result
     }
 
     // MARK: - Rendering
@@ -204,10 +176,6 @@ public final class TerminalSurface {
         if let s = surface {
             ghostty_surface_ime_point(s, &x, &y, &w, &h)
         }
-        TerminalDebugLog.log(
-            .ime,
-            "surface imePoint x=\(String(format: "%.2f", x)) y=\(String(format: "%.2f", y)) width=\(String(format: "%.2f", w)) height=\(String(format: "%.2f", h))"
-        )
         return (x, y, w, h)
     }
 
@@ -234,9 +202,4 @@ public final class TerminalSurface {
         // Swift 6 strict concurrency prevents accessing @MainActor
         // state from nonisolated deinit.
     }
-}
-
-private func terminalKeyText(_ event: ghostty_input_key_s) -> String {
-    guard let text = event.text else { return "nil" }
-    return TerminalDebugLog.describe(String(cString: text))
 }

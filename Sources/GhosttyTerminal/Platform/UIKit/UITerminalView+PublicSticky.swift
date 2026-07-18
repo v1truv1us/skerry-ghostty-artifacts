@@ -3,9 +3,8 @@
 //  libghostty-spm
 //
 //  Public wrappers around the iOS sticky-modifier state machine so
-//  hosts that suppress `inputAccessoryView` (and supply their own chip
-//  pill UI) can still drive the same Ctrl/Alt/Cmd sticky path that the
-//  bundled `TerminalInputAccessoryView` uses.
+//  hosts that suppress `inputAccessoryView` can still drive the same
+//  Ctrl/Alt/Cmd sticky path that the bundled `TerminalInputBar` uses.
 //
 //  Without this surface a host with a custom keyboard accessory has to
 //  either:

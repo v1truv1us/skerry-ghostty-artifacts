@@ -6,7 +6,9 @@
 #if canImport(UIKit) && !targetEnvironment(macCatalyst)
     enum TerminalInputBarKey {
         case esc
+        case interrupt
         case tab
+        case end
         case arrowLeft
         case arrowUp
         case arrowDown

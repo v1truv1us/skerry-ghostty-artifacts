@@ -69,11 +69,6 @@
                 modifiers: mods
             )
 
-            TerminalDebugLog.log(
-                .input,
-                "uikit key action=\(TerminalDebugLog.describe(action)) code=\(key.keyCode.rawValue) chars=\(TerminalDebugLog.describe(key.characters)) ignoring=\(TerminalDebugLog.describe(key.charactersIgnoringModifiers)) mods=0x\(String(filteredModifierFlags.rawValue, radix: 16)) delivery=\(delivery.debugSummary) marked=\(inputHandler.hasMarkedText)"
-            )
-
             if action == GHOSTTY_ACTION_RELEASE, delivery.isDirectInput {
                 return
             }
@@ -216,17 +211,8 @@
         private func scheduleViewportRefreshAfterKeyboardZoom(
             _ direction: KeyboardZoomDirection
         ) {
-            TerminalDebugLog.log(
-                .actions,
-                "keyboard zoom shortcut direction=\(direction.rawValue)"
-            )
             #if !targetEnvironment(macCatalyst)
-                switch direction {
-                case .increase:
-                    currentFontSize = min(currentFontSize + 1, Self.maxFontSize)
-                case .decrease:
-                    currentFontSize = max(currentFontSize - 1, Self.minFontSize)
-                }
+                recordKeyboardZoomFontSizeChange(increases: direction == .increase)
             #endif
 
             DispatchQueue.main.async { [weak self] in
@@ -237,6 +223,12 @@
                 )
             }
         }
+
+        #if !targetEnvironment(macCatalyst)
+            func recordKeyboardZoomFontSizeChange(increases: Bool) {
+                recordBindingFontSizeChange(currentFontSize + (increases ? 1 : -1))
+            }
+        #endif
 
         private enum KeyboardZoomDirection: String {
             case increase

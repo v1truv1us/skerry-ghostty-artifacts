@@ -14,6 +14,7 @@
                 target: self,
                 action: #selector(handlePinchGesture(_:))
             )
+            pinch.delegate = self
             addGestureRecognizer(pinch)
         }
 
@@ -21,10 +22,7 @@
             switch gesture.state {
             case .began:
                 lastPinchScale = gesture.scale
-                TerminalDebugLog.log(
-                    .actions,
-                    "pinch began scale=\(String(format: "%.3f", gesture.scale)) fontSize=\(currentFontSize)"
-                )
+                pinchChangedFontSize = false
 
             case .changed:
                 let delta = gesture.scale - lastPinchScale
@@ -33,47 +31,58 @@
                 guard steps != 0 else { return }
 
                 lastPinchScale += CGFloat(steps) * Self.scaleStepThreshold
-                TerminalDebugLog.log(
-                    .actions,
-                    "pinch changed scale=\(String(format: "%.3f", gesture.scale)) delta=\(String(format: "%.3f", delta)) steps=\(steps)"
-                )
-
-                var changed = false
-                if steps > 0 {
-                    for _ in 0 ..< steps {
-                        guard currentFontSize < Self.maxFontSize else { break }
-                        surface?.performBindingAction("increase_font_size:1")
-                        currentFontSize += 1
-                        changed = true
-                    }
-                } else {
-                    for _ in 0 ..< abs(steps) {
-                        guard currentFontSize > Self.minFontSize else { break }
-                        surface?.performBindingAction("decrease_font_size:1")
-                        currentFontSize -= 1
-                        changed = true
-                    }
-                }
-
-                if changed {
-                    core.synchronizeMetrics()
-                    refreshTextInputGeometry(reason: "pinch-zoom")
-                    TerminalDebugLog.log(
-                        .actions,
-                        "pinch applied fontSize=\(currentFontSize)"
-                    )
-                }
+                pinchChangedFontSize = true
+                applyFontSize(currentFontSize + Float(steps), publishesChange: true)
 
             case .ended, .cancelled, .failed:
                 lastPinchScale = 1.0
-                TerminalDebugLog.log(
-                    .actions,
-                    "pinch ended state=\(gesture.state.rawValue) fontSize=\(currentFontSize)"
-                )
+                DispatchQueue.main.async { [weak self] in
+                    self?.pinchChangedFontSize = false
+                }
 
             default:
                 break
             }
+        }
+
+        public func setTerminalFontSize(_ fontSize: Float) {
+            applyFontSize(fontSize, publishesChange: false)
+        }
+
+        static func validatedFontSize(_ fontSize: Float) -> Float {
+            guard fontSize.isFinite else { return 12 }
+            return min(max(fontSize.rounded(), minFontSize), maxFontSize)
+        }
+
+        func applyFontSize(_ requestedSize: Float, publishesChange: Bool) {
+            let fontSize = Self.validatedFontSize(requestedSize)
+            guard fontSize != currentFontSize else { return }
+
+            let difference = Int(fontSize - currentFontSize)
+            if difference > 0 {
+                for _ in 0 ..< difference {
+                    surface?.performBindingAction("increase_font_size:1")
+                }
+            } else {
+                for _ in 0 ..< abs(difference) {
+                    surface?.performBindingAction("decrease_font_size:1")
+                }
+            }
+            currentFontSize = fontSize
+            core.recordFontSize(fontSize)
+            core.synchronizeMetrics()
+            refreshTextInputGeometry(reason: "font-size-change")
+            if publishesChange {
+                terminalFontSizeDidChange?(fontSize)
+            }
+        }
+
+        func recordBindingFontSizeChange(_ requestedSize: Float) {
+            let fontSize = Self.validatedFontSize(requestedSize)
+            guard fontSize != currentFontSize else { return }
+            currentFontSize = fontSize
+            core.recordFontSize(fontSize)
+            terminalFontSizeDidChange?(fontSize)
         }
     }
 #endif

@@ -636,7 +636,7 @@ actor Engine {
     }
 
     private func send(_ string: String) {
-        sessionBridge.session?.receive(string)
+        sessionBridge.session?.receive(Data(string.utf8))
     }
 
     private func send(_ data: Data) {

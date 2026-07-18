@@ -101,17 +101,13 @@ public enum TerminalDebugLog {
         )
     }
 
-    static func describe(_ string: String?, limit: Int = 96) -> String {
+    static func describe(_ string: String?, limit _: Int = 96) -> String {
         guard let string else { return "nil" }
-        return "\"\(escaped(string, limit: limit))\""
+        return "characters=\(string.count)"
     }
 
-    static func describe(_ data: Data, limit: Int = 48) -> String {
-        let preview = data.prefix(limit)
-        let text = String(decoding: preview, as: UTF8.self)
-        let hex = preview.map { String(format: "%02X", $0) }.joined(separator: " ")
-        let suffix = data.count > limit ? "..." : ""
-        return "bytes=\(data.count) utf8=\"\(escaped(text, limit: limit))\(suffix)\" hex=\(hex)\(suffix)"
+    static func describe(_ data: Data, limit _: Int = 48) -> String {
+        "bytes=\(data.count)"
     }
 
     static func describe(_ range: NSRange) -> String {
@@ -212,42 +208,6 @@ public enum TerminalDebugLog {
 
     private static func timestamp() -> String {
         String(format: "%.3f", Date().timeIntervalSince1970)
-    }
-
-    private static func escaped(
-        _ string: String,
-        limit: Int
-    ) -> String {
-        var result = ""
-        var emitted = 0
-        for scalar in string.unicodeScalars {
-            guard emitted < limit else {
-                result.append("...")
-                break
-            }
-
-            switch scalar.value {
-            case 0x09:
-                result.append("\\t")
-            case 0x0A:
-                result.append("\\n")
-            case 0x0D:
-                result.append("\\r")
-            case 0x1B:
-                result.append("\\e")
-            case 0x20 ..< 0x7F:
-                result.append(Character(scalar))
-            default:
-                if scalar.value < 0x20 || scalar.value == 0x7F {
-                    result.append(String(format: "\\u{%02X}", Int(scalar.value)))
-                } else {
-                    result.append(Character(scalar))
-                }
-            }
-
-            emitted += 1
-        }
-        return result
     }
 }
 

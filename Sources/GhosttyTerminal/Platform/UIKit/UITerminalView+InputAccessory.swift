@@ -9,7 +9,10 @@
 
     extension UITerminalView {
         override public var inputAccessoryView: UIView? {
-            terminalInputAccessory
+            switch inputBarPresentationMode {
+            case .bundled: terminalInputAccessory
+            case .hostManaged: nil
+            }
         }
 
         func handleInputBarKey(_ key: TerminalInputBarKey) {
@@ -29,9 +32,17 @@
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x29, additionalMods: mods)
 
+            case .interrupt:
+                stickyModifiers.reset()
+                sendControlByte(0x03)
+
             case .tab:
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x2B, additionalMods: mods)
+
+            case .end:
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(usage: 0x4D, additionalMods: mods)
 
             case .arrowLeft:
                 let mods = stickyModifiers.consumeForNextKey()

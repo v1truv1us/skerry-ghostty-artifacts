@@ -28,9 +28,21 @@ struct TerminalHardwareKeyRouterTests {
         )
         #expect(
             TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x29,
+                backend: .inMemory(session)
+            ) == .data(Data([0x1B]))
+        )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
                 usage: 0x2B,
                 backend: .inMemory(session)
             ) == .data(Data([0x09]))
+        )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x4D,
+                backend: .inMemory(session)
+            ) == .data(Data("\u{1B}[F".utf8))
         )
     }
 

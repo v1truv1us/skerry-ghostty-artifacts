@@ -61,6 +61,8 @@ enum TerminalHardwareKeyRouter {
 
     private static func directControlInputForUIKit(usage: UInt16) -> Data? {
         switch usage {
+        case 0x29:
+            Data([0x1B])
         case 0x2A:
             Data([0x7F])
         case 0x2B:

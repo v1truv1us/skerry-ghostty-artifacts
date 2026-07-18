@@ -9,6 +9,48 @@
     import GhosttyKit
     import UIKit
 
+    public enum TerminalHorizontalSwipeDirection: Equatable, Sendable {
+        case left
+        case right
+    }
+
+    public enum TerminalTouchAction: Sendable {
+        case horizontalSwipe(TerminalHorizontalSwipeDirection)
+        /// Positive values reveal older history; negative values move toward live output.
+        case verticalScroll(lines: Int)
+    }
+
+    public enum TerminalInputBarPresentationMode: Equatable, Sendable {
+        case bundled
+        case hostManaged
+    }
+
+    @MainActor
+    public struct TerminalInputAccessoryAction {
+        public let id: String
+        public let accessibilityLabel: String
+        public let systemImage: String
+        public let selectedSystemImage: String?
+        public let isSelected: Bool
+        public let handler: () -> Void
+
+        public init(
+            id: String,
+            accessibilityLabel: String,
+            systemImage: String,
+            selectedSystemImage: String? = nil,
+            isSelected: Bool = false,
+            handler: @escaping () -> Void
+        ) {
+            self.id = id
+            self.accessibilityLabel = accessibilityLabel
+            self.systemImage = systemImage
+            self.selectedSystemImage = selectedSystemImage
+            self.isSelected = isSelected
+            self.handler = handler
+        }
+    }
+
     @MainActor
     public final class UITerminalView: UIView {
         let core = TerminalSurfaceCoordinator()
@@ -23,20 +65,38 @@
         #endif
         var hardwareKeyHandled = false
         let touchScrollMultiplier: CGFloat = 3.0
+        var tmuxScrollRemainder: CGFloat = 0
+        var touchScrollOwner = TerminalTouchScrollOwner.terminal
+        var bufferedTouchScroll = CGPoint.zero
+        var isTerminalSelectionActive = false
+        var terminalSelectionModifiers = ghostty_input_mods_e(rawValue: 0)
+        lazy var terminalEditMenuInteraction = UIEditMenuInteraction(delegate: self)
         #if !targetEnvironment(macCatalyst)
-            var currentFontSize: Float = 14
+            var currentFontSize: Float = 12
             var lastPinchScale: CGFloat = 1.0
+            var pinchChangedFontSize = false
+            public var terminalFontSizeDidChange: ((Float) -> Void)?
         #endif
         lazy var inputHandler = TerminalTextInputHandler(view: self)
         weak var _inputDelegate: (any UITextInputDelegate)?
 
         #if !targetEnvironment(macCatalyst)
-            lazy var terminalInputAccessory = TerminalInputAccessoryView(terminalView: self)
+            lazy var terminalInputAccessory = TerminalInputBar(terminalView: self)
             let stickyModifiers = TerminalStickyModifierState()
-            var softwareKeyboardVisible = false
-            var pendingKeyboardDismissOnTouchEnd = false
-            var touchDidScrollDuringCurrentTouch = false
+            public var inputBarPresentationMode = TerminalInputBarPresentationMode.bundled {
+                didSet {
+                    guard inputBarPresentationMode != oldValue else { return }
+                    reloadInputViews()
+                }
+            }
         #endif
+
+        public var isResponderEligible = false {
+            didSet {
+                guard !isResponderEligible else { return }
+                resignFirstResponder()
+            }
+        }
 
         #if !targetEnvironment(macCatalyst)
             public var inputAccessoryStyle: TerminalInputAccessoryStyle {
@@ -49,6 +109,22 @@
             get { core.delegate }
             set { core.delegate = newValue }
         }
+
+        /// When set, Skerry owns terminal touch navigation (for example, tmux window
+        /// switching and copy-mode history). Returning false preserves Ghostty input.
+        public var touchActionHandler: ((TerminalTouchAction) -> Bool)?
+
+        /// Called after Ghostty completes a rendered frame. The callback must
+        /// never inspect or receive terminal content.
+        public var postRenderHandler: (() -> Void)?
+
+        public var inputAccessoryActions: [TerminalInputAccessoryAction] = [] {
+            didSet {
+                refreshInputAccessoryContent()
+                hostInputBarContentDidChange?()
+            }
+        }
+        var hostInputBarContentDidChange: (() -> Void)?
 
         public var controller: TerminalController? {
             get { core.controller }
@@ -81,7 +157,7 @@
         }
 
         override public var canBecomeFirstResponder: Bool {
-            true
+            isResponderEligible
         }
 
         override public init(frame: CGRect) {
@@ -125,39 +201,11 @@
             }
             core.onPostRender = { [weak self] in
                 self?.enforceSublayerScale()
+                self?.postRenderHandler?()
             }
 
             setupPlatformInput()
-            #if !targetEnvironment(macCatalyst)
-                setupKeyboardObservers()
-            #endif
         }
-
-        #if !targetEnvironment(macCatalyst)
-            func setupKeyboardObservers() {
-                NotificationCenter.default.addObserver(
-                    self,
-                    selector: #selector(keyboardDidShow),
-                    name: UIResponder.keyboardDidShowNotification,
-                    object: nil
-                )
-                NotificationCenter.default.addObserver(
-                    self,
-                    selector: #selector(keyboardDidHide),
-                    name: UIResponder.keyboardDidHideNotification,
-                    object: nil
-                )
-            }
-
-            @objc func keyboardDidShow(_: Notification) {
-                guard isFirstResponder else { return }
-                softwareKeyboardVisible = true
-            }
-
-            @objc func keyboardDidHide(_: Notification) {
-                softwareKeyboardVisible = false
-            }
-        #endif
 
         func refreshTextInputGeometry(reason: String) {
             guard isFirstResponder || inputHandler.hasMarkedText else { return }
@@ -169,6 +217,16 @@
             #if !targetEnvironment(macCatalyst)
                 terminalInputAccessory.refreshContent()
             #endif
+        }
+    }
+
+    extension UITerminalView: UIGestureRecognizerDelegate {
+        public func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            (gestureRecognizer is UIPinchGestureRecognizer && otherGestureRecognizer is UIPanGestureRecognizer)
+                || (gestureRecognizer is UIPanGestureRecognizer && otherGestureRecognizer is UIPinchGestureRecognizer)
         }
     }
 #endif
