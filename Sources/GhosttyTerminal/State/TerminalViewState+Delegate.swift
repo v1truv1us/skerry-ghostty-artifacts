@@ -12,7 +12,9 @@ extension TerminalViewState:
     TerminalSurfaceTitleDelegate,
     TerminalSurfaceGridResizeDelegate,
     TerminalSurfaceFocusDelegate,
-    TerminalSurfaceCloseDelegate
+    TerminalSurfaceCloseDelegate,
+    TerminalSurfaceBellDelegate,
+    TerminalSurfaceDesktopNotificationDelegate
 {
     public func terminalDidChangeTitle(_ title: String) {
         self.title = title
@@ -28,5 +30,13 @@ extension TerminalViewState:
 
     public func terminalDidClose(processAlive: Bool) {
         onClose?(processAlive)
+    }
+
+    public func terminalDidRingBell() {
+        attentionEventCount &+= 1
+    }
+
+    public func terminalDidRequestDesktopNotification() {
+        attentionEventCount &+= 1
     }
 }

@@ -90,15 +90,12 @@ final class TerminalCallbackBridge {
                 )
 
         case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
-            let payload = action.action.desktop_notification
-            let title = payload.title.map { String(cString: $0) } ?? ""
-            let body = payload.body.map { String(cString: $0) } ?? ""
-            TerminalDebugLog.log(
-                .actions,
-                "callback action=desktop_notification title=\(TerminalDebugLog.describe(title)) body=\(TerminalDebugLog.describe(body))"
-            )
+            // Title/body are remote-controlled arbitrary text. They are never
+            // read out of the C payload — not even into a redacted log — so
+            // there is no Swift String carrying that content to leak.
+            TerminalDebugLog.log(.actions, "callback action=desktop_notification")
             (delegate as? any TerminalSurfaceDesktopNotificationDelegate)?
-                .terminalDidRequestDesktopNotification(title: title, body: body)
+                .terminalDidRequestDesktopNotification()
 
         case GHOSTTY_ACTION_OPEN_URL:
             let payload = action.action.open_url

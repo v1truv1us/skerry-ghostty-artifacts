@@ -77,10 +77,13 @@ public protocol TerminalSurfaceCommandFinishedDelegate: TerminalSurfaceViewDeleg
 }
 
 /// OSC 9 (iTerm2) / OSC 777 (rxvt-unicode) desktop notification.
-/// Empty title/body surface as empty strings rather than nil.
+///
+/// Deliberately content-free: title/body are remote-controlled arbitrary
+/// text with no legitimate use once "a notification was requested" has been
+/// observed, and the app never displays, stores, or forwards them.
 @MainActor
 public protocol TerminalSurfaceDesktopNotificationDelegate: TerminalSurfaceViewDelegate {
-    func terminalDidRequestDesktopNotification(title: String, body: String)
+    func terminalDidRequestDesktopNotification()
 }
 
 public enum TerminalOpenURLKind: Sendable {

@@ -14,6 +14,11 @@ public final class TerminalViewState {
     public internal(set) var title: String = ""
     public internal(set) var surfaceSize: TerminalGridMetrics?
     public internal(set) var isFocused: Bool = false
+    /// Monotonically increases on bell or desktop-notification requests — the
+    /// two signals a remote program sends specifically to say "notice me."
+    /// A count rather than a flag so a consumer can always tell "did this
+    /// happen again since I last looked," including while it wasn't observing.
+    public internal(set) var attentionEventCount = 0
 
     public var configuration: TerminalSurfaceOptions = .init()
     public var onClose: ((Bool) -> Void)?
