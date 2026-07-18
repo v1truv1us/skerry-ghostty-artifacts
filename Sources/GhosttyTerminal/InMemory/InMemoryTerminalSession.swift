@@ -12,6 +12,7 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
     private let lock = NSLock()
     private var surface: ghostty_surface_t?
     private var lastResize: InMemoryTerminalViewport?
+    private var outputRevision: UInt64 = 0
     private let writeHandler: @Sendable (Data) -> Void
     private let resizeHandler: @Sendable (InMemoryTerminalViewport) -> Void
 
@@ -57,6 +58,16 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
         return surface
     }
 
+    /// Monotonically increases each time host output is actually written to an
+    /// attached surface. Comparing two readings answers "did a real draw of new
+    /// output happen since X", which a render-frame callback alone cannot: a
+    /// display link fires on every frame whether or not anything new arrived.
+    public func currentOutputRevision() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return outputRevision
+    }
+
     func updateViewport(_ size: TerminalGridMetrics) {
         TerminalDebugLog.log(.metrics, "in-memory viewport update \(size.debugSummary)")
         dispatchResize(InMemoryTerminalViewport(
@@ -82,6 +93,9 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
     public func receive(_ data: Data) {
         lock.lock()
         let activeSurface = surface
+        if activeSurface != nil, !data.isEmpty {
+            outputRevision &+= 1
+        }
         lock.unlock()
 
         guard let activeSurface else {
