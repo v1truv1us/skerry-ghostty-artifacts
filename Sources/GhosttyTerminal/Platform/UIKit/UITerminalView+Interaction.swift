@@ -474,6 +474,12 @@
                 ) { [weak self] _ in
                     _ = self?.surface?.performBindingAction("copy_to_clipboard")
                 },
+                UIAction(
+                    title: "Select All",
+                    image: UIImage(systemName: "selection.pin.in.out")
+                ) { [weak self] _ in
+                    _ = self?.surface?.performBindingAction("select_all")
+                },
             ]
 
             // `hasStrings` is a non-consuming check: it does not read the

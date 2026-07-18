@@ -139,6 +139,38 @@ final class TerminalCallbackBridge {
                     .terminalDidChangeWorkingDirectory(pwd)
             }
 
+        case GHOSTTY_ACTION_START_SEARCH:
+            // The "needle" payload is never read — whichever caller started
+            // the search already has its own copy of the query text.
+            TerminalDebugLog.log(.actions, "callback action=start_search")
+            (delegate as? any TerminalSurfaceSearchDelegate)?.terminalDidStartSearch()
+
+        case GHOSTTY_ACTION_END_SEARCH:
+            TerminalDebugLog.log(.actions, "callback action=end_search")
+            (delegate as? any TerminalSurfaceSearchDelegate)?.terminalDidEndSearch()
+
+        case GHOSTTY_ACTION_SEARCH_TOTAL:
+            let total = Int(action.action.search_total.total)
+            TerminalDebugLog.log(.actions, "callback action=search_total total=\(total)")
+            (delegate as? any TerminalSurfaceSearchDelegate)?.terminalDidUpdateSearchMatchCount(total)
+
+        case GHOSTTY_ACTION_SEARCH_SELECTED:
+            let selected = Int(action.action.search_selected.selected)
+            TerminalDebugLog.log(.actions, "callback action=search_selected selected=\(selected)")
+            (delegate as? any TerminalSurfaceSearchDelegate)?.terminalDidUpdateSearchSelectedIndex(selected)
+
+        case GHOSTTY_ACTION_SCROLLBAR:
+            let scrollbar = action.action.scrollbar
+            TerminalDebugLog.log(
+                .actions,
+                "callback action=scrollbar total=\(scrollbar.total) offset=\(scrollbar.offset) len=\(scrollbar.len)"
+            )
+            (delegate as? any TerminalSurfaceScrollbarDelegate)?.terminalDidUpdateScrollbar(
+                total: scrollbar.total,
+                offset: scrollbar.offset,
+                length: scrollbar.len
+            )
+
         default:
             TerminalDebugLog.log(
                 .actions,

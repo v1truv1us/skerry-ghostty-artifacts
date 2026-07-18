@@ -117,3 +117,23 @@ public protocol TerminalSurfaceHoverLinkDelegate: TerminalSurfaceViewDelegate {
 public protocol TerminalSurfacePwdDelegate: TerminalSurfaceViewDelegate {
     func terminalDidChangeWorkingDirectory(_ path: String)
 }
+
+/// Reports Ghostty's own search state (driven via `performBindingAction`'s
+/// "start_search"/"search:<query>"/"navigate_search:next|previous"/
+/// "end_search" actions). Deliberately content-free: the search query is
+/// always supplied by, and already known to, whichever caller initiated the
+/// search — these callbacks report match count/position only, never text.
+@MainActor
+public protocol TerminalSurfaceSearchDelegate: TerminalSurfaceViewDelegate {
+    func terminalDidStartSearch()
+    func terminalDidEndSearch()
+    func terminalDidUpdateSearchMatchCount(_ total: Int)
+    func terminalDidUpdateSearchSelectedIndex(_ selected: Int)
+}
+
+/// Scrollback position, for a scroll-position indicator and jump-to-bottom
+/// control. `total`/`offset`/`length` are line counts, never content.
+@MainActor
+public protocol TerminalSurfaceScrollbarDelegate: TerminalSurfaceViewDelegate {
+    func terminalDidUpdateScrollbar(total: UInt64, offset: UInt64, length: UInt64)
+}

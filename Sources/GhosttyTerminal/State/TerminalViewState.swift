@@ -8,6 +8,25 @@
 import Foundation
 import SwiftUI
 
+/// Scrollback position as line counts only — never content. `total` is the
+/// full scrollback line count, `offset` is the topmost visible line, `length`
+/// is the viewport's line count.
+public struct TerminalScrollbarPosition: Equatable, Sendable {
+    public let total: UInt64
+    public let offset: UInt64
+    public let length: UInt64
+
+    public init(total: UInt64, offset: UInt64, length: UInt64) {
+        self.total = total
+        self.offset = offset
+        self.length = length
+    }
+
+    public var isAtBottom: Bool {
+        offset + length >= total
+    }
+}
+
 @available(macOS 14.0, iOS 17.0, macCatalyst 17.0, *)
 @MainActor @Observable
 public final class TerminalViewState {
@@ -19,6 +38,10 @@ public final class TerminalViewState {
     /// A count rather than a flag so a consumer can always tell "did this
     /// happen again since I last looked," including while it wasn't observing.
     public internal(set) var attentionEventCount = 0
+    public internal(set) var isSearchActive = false
+    public internal(set) var searchMatchCount = 0
+    public internal(set) var searchSelectedIndex = 0
+    public internal(set) var scrollbarPosition: TerminalScrollbarPosition?
 
     public var configuration: TerminalSurfaceOptions = .init()
     public var onClose: ((Bool) -> Void)?

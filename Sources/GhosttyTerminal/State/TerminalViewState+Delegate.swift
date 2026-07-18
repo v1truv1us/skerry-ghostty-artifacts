@@ -14,7 +14,9 @@ extension TerminalViewState:
     TerminalSurfaceFocusDelegate,
     TerminalSurfaceCloseDelegate,
     TerminalSurfaceBellDelegate,
-    TerminalSurfaceDesktopNotificationDelegate
+    TerminalSurfaceDesktopNotificationDelegate,
+    TerminalSurfaceSearchDelegate,
+    TerminalSurfaceScrollbarDelegate
 {
     public func terminalDidChangeTitle(_ title: String) {
         self.title = title
@@ -38,5 +40,27 @@ extension TerminalViewState:
 
     public func terminalDidRequestDesktopNotification() {
         attentionEventCount &+= 1
+    }
+
+    public func terminalDidStartSearch() {
+        isSearchActive = true
+    }
+
+    public func terminalDidEndSearch() {
+        isSearchActive = false
+        searchMatchCount = 0
+        searchSelectedIndex = 0
+    }
+
+    public func terminalDidUpdateSearchMatchCount(_ total: Int) {
+        searchMatchCount = total
+    }
+
+    public func terminalDidUpdateSearchSelectedIndex(_ selected: Int) {
+        searchSelectedIndex = selected
+    }
+
+    public func terminalDidUpdateScrollbar(total: UInt64, offset: UInt64, length: UInt64) {
+        scrollbarPosition = TerminalScrollbarPosition(total: total, offset: offset, length: length)
     }
 }
