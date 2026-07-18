@@ -1,0 +1,12 @@
+# Toolchain versions verified to build GHOSTTY_REF successfully.
+#
+# This is a forward-looking pin, not a retroactive claim: the
+# already-vendored BinaryTarget/GhosttyKit.xcframework predates this file,
+# and there is no recorded provenance for which exact Xcode/Zig versions
+# built it (it is gitignored, machine-local, and build.sh has no build-info
+# stamping today). Treat this file as "known-good as of the date below,"
+# and update it whenever build.sh is next run to rebuild GHOSTTY_REF.
+
+xcode=26.5 (17F42)
+zig=0.16.0
+recorded=2026-07-18

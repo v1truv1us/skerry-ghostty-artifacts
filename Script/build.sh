@@ -27,6 +27,8 @@ Options:
   -h, --help               Show this help.
 
 Notes:
+  - See ./TOOLCHAIN_VERSIONS for the Xcode/Zig versions last verified to
+    build GHOSTTY_REF successfully. Update it after rebuilding.
   - Default source path is ./References/ghostty-upstream
   - This builds real per-target static archives, then assembles
     BinaryTarget/GhosttyKit.xcframework and build/GhosttyKit.xcframework.zip
