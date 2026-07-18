@@ -16,6 +16,10 @@ Usage: ./build.sh [options]
 Options:
   --source <path>          Use an existing Ghostty checkout.
   --ref <tag-or-commit>    Checkout the given ref in the source checkout.
+                           Defaults to the pinned commit recorded in
+                           ./GHOSTTY_REF. Pass --ref HEAD to build whatever
+                           is currently checked out instead (e.g. a local
+                           Ghostty fork you're iterating on).
   --platforms <csv>        Build platform groups. Default:
                            macos,ios,maccatalyst
   --download-url <url>     Generate Package.swift from Package.swift.template.
@@ -29,6 +33,10 @@ Notes:
   - Upstream Ghostty patches from ./Patches/ghostty are applied automatically
   - Current verified groups: macos, ios, maccatalyst
   - Current upstream Ghostty crashes for: tvos, visionos, watchos
+  - Building without an immutable ref is refused: cloning the moving
+    default branch at whatever moment a fresh checkout happens to run
+    would make this build unreproducible. Update ./GHOSTTY_REF (a single
+    commit SHA) when deliberately advancing to a newer upstream commit.
 EOF
 }
 
@@ -84,11 +92,25 @@ if [ ! -d "$SOURCE_DIR" ]; then
     git clone https://github.com/ghostty-org/ghostty "$SOURCE_DIR"
 fi
 
-if [ -n "$GHOSTTY_REF" ]; then
+if [ -z "$GHOSTTY_REF" ]; then
+    PINNED_REF_FILE="$ROOT_DIR/GHOSTTY_REF"
+    if [ ! -f "$PINNED_REF_FILE" ]; then
+        echo "[!] no --ref given and $PINNED_REF_FILE does not exist"
+        echo "[!] refusing to build against a moving default branch"
+        exit 1
+    fi
+    GHOSTTY_REF=$(tr -d '[:space:]' < "$PINNED_REF_FILE")
+    echo "[*] using pinned ghostty ref from GHOSTTY_REF: $GHOSTTY_REF"
+fi
+
+if [ "$GHOSTTY_REF" != "HEAD" ]; then
     echo "[*] checking out ghostty ref: $GHOSTTY_REF"
     git -C "$SOURCE_DIR" fetch --tags origin
     git -C "$SOURCE_DIR" checkout "$GHOSTTY_REF"
 fi
+
+RESOLVED_REF=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+echo "[*] ghostty source resolved to: $RESOLVED_REF"
 
 ARTIFACTS_DIR="$ROOT_DIR/build/artifacts"
 XCFRAMEWORK_PATH="$ROOT_DIR/BinaryTarget/GhosttyKit.xcframework"
