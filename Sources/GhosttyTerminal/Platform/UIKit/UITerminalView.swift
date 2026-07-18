@@ -71,6 +71,15 @@
         var isTerminalSelectionActive = false
         var terminalSelectionModifiers = ghostty_input_mods_e(rawValue: 0)
         lazy var terminalEditMenuInteraction = UIEditMenuInteraction(delegate: self)
+        // The screen points last sent to Ghostty as the selection's fixed
+        // and moving ends. Ghostty has no API to read an active selection's
+        // endpoint geometry back (only a single bundled-with-text point), so
+        // these handles track the points this view itself already sent.
+        var selectionStartPoint: CGPoint?
+        var selectionEndPoint: CGPoint?
+        var selectionHandleDragOrigin: CGPoint?
+        lazy var startSelectionHandle = TerminalSelectionHandleView(edge: .start)
+        lazy var endSelectionHandle = TerminalSelectionHandleView(edge: .end)
         #if !targetEnvironment(macCatalyst)
             var currentFontSize: Float = 12
             var lastPinchScale: CGFloat = 1.0
@@ -205,6 +214,7 @@
             }
 
             setupPlatformInput()
+            setupSelectionHandles()
         }
 
         func refreshTextInputGeometry(reason: String) {

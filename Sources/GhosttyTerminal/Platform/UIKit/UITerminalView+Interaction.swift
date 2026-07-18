@@ -215,6 +215,7 @@
             guard state == .ended else { return }
             guard canBecomeFirstResponder else { return }
             becomeFirstResponder()
+            hideSelectionHandles()
             guard let surface else { return }
             let mods = ghostty_input_mods_e(rawValue: 0)
             surface.sendMousePos(x: location.x, y: location.y, mods: mods)
@@ -238,10 +239,12 @@
             case .began:
                 stopMomentumScrolling()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                hideSelectionHandles()
                 terminalSelectionModifiers = surface.isMouseCaptured
                     ? TerminalInputModifiers.shift.ghosttyMods
                     : ghostty_input_mods_e(rawValue: 0)
                 isTerminalSelectionActive = true
+                selectionStartPoint = location
                 surface.sendMousePos(
                     x: location.x,
                     y: location.y,
@@ -255,6 +258,7 @@
 
             case .changed:
                 guard isTerminalSelectionActive else { return }
+                selectionEndPoint = location
                 surface.sendMousePos(
                     x: location.x,
                     y: location.y,
@@ -263,6 +267,7 @@
 
             case .ended:
                 guard isTerminalSelectionActive else { return }
+                selectionEndPoint = location
                 finishTerminalSelection(at: location, showMenu: true)
 
             case .cancelled, .failed:
@@ -288,12 +293,12 @@
             )
             isTerminalSelectionActive = false
 
-            if showMenu {
-                terminalEditMenuInteraction.presentEditMenu(with: UIEditMenuConfiguration(
-                    identifier: nil,
-                    sourcePoint: location
-                ))
+            guard showMenu, let start = selectionStartPoint else {
+                hideSelectionHandles()
+                return
             }
+            showSelectionHandles(start: start, end: location)
+            presentSelectionEditMenu(at: location)
         }
 
         @objc func handleTouchScrollGesture(
@@ -303,6 +308,7 @@
             case .began:
                 TerminalDebugLog.log(.input, "touch scroll began")
                 stopMomentumScrolling()
+                hideSelectionHandles()
                 tmuxScrollRemainder = 0
                 bufferedTouchScroll = .zero
                 touchScrollOwner = TerminalTouchScrollRouting.initialOwner(
