@@ -28,8 +28,7 @@ final class TerminalCallbackBridge {
     func handleAction(_ action: ghostty_action_s) {
         switch action.tag {
         case GHOSTTY_ACTION_SET_TITLE:
-            if let cStr = action.action.set_title.title {
-                let title = String(cString: cStr)
+            if let title = GhosttyPayloadText.decode(cString: action.action.set_title.title) {
                 TerminalDebugLog.log(
                     .actions,
                     "callback action=set_title title=\(TerminalDebugLog.describe(title))"
@@ -100,12 +99,7 @@ final class TerminalCallbackBridge {
         case GHOSTTY_ACTION_OPEN_URL:
             let payload = action.action.open_url
             let kind = TerminalOpenURLKind(payload.kind)
-            let url: String = payload.url.map { ptr in
-                // Ghostty provides a length-prefixed string; respect the
-                // documented length rather than trusting a NUL terminator.
-                let buf = UnsafeBufferPointer(start: ptr, count: Int(payload.len))
-                return String(decoding: buf.map(UInt8.init), as: UTF8.self)
-            } ?? ""
+            let url = GhosttyPayloadText.decode(payload.url, length: Int(payload.len))
             TerminalDebugLog.log(
                 .actions,
                 "callback action=open_url kind=\(kind) url=\(TerminalDebugLog.describe(url))"
@@ -115,11 +109,10 @@ final class TerminalCallbackBridge {
 
         case GHOSTTY_ACTION_MOUSE_OVER_LINK:
             let payload = action.action.mouse_over_link
-            let url: String? = {
-                guard let ptr = payload.url, payload.len > 0 else { return nil }
-                let buf = UnsafeBufferPointer(start: ptr, count: Int(payload.len))
-                return String(decoding: buf.map(UInt8.init), as: UTF8.self)
-            }()
+            let url: String? = payload.url.flatMap { ptr in
+                guard payload.len > 0 else { return nil }
+                return GhosttyPayloadText.decode(ptr, length: Int(payload.len))
+            }
             TerminalDebugLog.log(
                 .actions,
                 "callback action=mouse_over_link url=\(url.map { TerminalDebugLog.describe($0) } ?? "nil")"
@@ -129,8 +122,7 @@ final class TerminalCallbackBridge {
 
         case GHOSTTY_ACTION_PWD:
             let payload = action.action.pwd
-            if let cStr = payload.pwd {
-                let pwd = String(cString: cStr)
+            if let pwd = GhosttyPayloadText.decode(cString: payload.pwd) {
                 TerminalDebugLog.log(
                     .actions,
                     "callback action=pwd pwd=\(TerminalDebugLog.describe(pwd))"
