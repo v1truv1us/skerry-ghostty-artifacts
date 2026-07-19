@@ -17,7 +17,16 @@
             )
             updateDisplayScale()
             if window != nil {
-                core.rebuildIfReady()
+                // SwiftUI/UIKit can temporarily detach and reattach the
+                // terminal view while diffing the view hierarchy. Rebuilding
+                // on every reattach discards Ghostty's scrollback/state (the
+                // session cannot replay it), so only create a surface when
+                // one does not already exist; otherwise just repaint.
+                if surface == nil {
+                    core.rebuildIfReady()
+                } else {
+                    core.requestImmediateTick()
+                }
                 updateColorScheme()
                 core.startDisplayLink()
                 // Defer sublayer frame and metrics sync to the next runloop
@@ -29,7 +38,7 @@
                 }
             } else {
                 core.stopDisplayLink()
-                core.freeSurface()
+                core.setFocus(false)
             }
         }
 
@@ -95,6 +104,14 @@
         /// Keeps the terminal surface alive while pausing rendering for hidden panes.
         func setDisplayVisible(_ visible: Bool) {
             core.setDisplayVisible(visible)
+        }
+
+        /// Forces an out-of-band redraw of the current grid. iOS may
+        /// invalidate the Metal layer's contents while the app is suspended,
+        /// and a demand-ticked renderer has no other reason to draw an idle
+        /// pane on return.
+        func requestRepaint() {
+            core.requestImmediateTick()
         }
 
         override func traitCollectionDidChange(
