@@ -38,6 +38,10 @@ public final class TerminalViewState {
     /// A count rather than a flag so a consumer can always tell "did this
     /// happen again since I last looked," including while it wasn't observing.
     public internal(set) var attentionEventCount = 0
+    /// Called right after `attentionEventCount` increments, so hosts can
+    /// react to the event itself (post a notification, refresh tmux window
+    /// flags) instead of only observing the counter.
+    public var onAttention: (() -> Void)?
     public internal(set) var isSearchActive = false
     public internal(set) var searchMatchCount = 0
     public internal(set) var searchSelectedIndex = 0

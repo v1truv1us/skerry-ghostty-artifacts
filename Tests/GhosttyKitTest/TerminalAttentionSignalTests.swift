@@ -41,4 +41,25 @@ struct TerminalAttentionSignalTests {
 
         #expect(state.attentionEventCount == 3)
     }
+
+    @Test
+    func attentionCallbackFiresOncePerSignal() {
+        let state = TerminalViewState()
+        var firedCount = 0
+        state.onAttention = { firedCount += 1 }
+
+        state.terminalDidRingBell()
+        state.terminalDidRequestDesktopNotification()
+
+        #expect(firedCount == 2)
+    }
+
+    @Test
+    func attentionCallbackIsOptional() {
+        let state = TerminalViewState()
+
+        state.terminalDidRingBell()
+
+        #expect(state.attentionEventCount == 1)
+    }
 }

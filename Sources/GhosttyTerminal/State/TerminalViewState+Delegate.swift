@@ -36,10 +36,12 @@ extension TerminalViewState:
 
     public func terminalDidRingBell() {
         attentionEventCount &+= 1
+        onAttention?()
     }
 
     public func terminalDidRequestDesktopNotification() {
         attentionEventCount &+= 1
+        onAttention?()
     }
 
     public func terminalDidStartSearch() {
