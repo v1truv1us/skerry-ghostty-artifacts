@@ -11,6 +11,7 @@ fi
 
 SOURCE_DIR=${1:-}
 PATCH_DIR=${2:-"$(pwd)/Patches/ghostty"}
+EXPECTED_GHOSTTY_REF=${EXPECTED_GHOSTTY_REF:-"$(tr -d '[:space:]' < GHOSTTY_REF)"}
 
 if [ -z "$SOURCE_DIR" ]; then
     echo "Usage: $0 <source_dir> [patch_dir]"
@@ -27,15 +28,30 @@ if [ ! -d "$PATCH_DIR" ]; then
     exit 0
 fi
 
+if ! git -C "$SOURCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "[-] ghostty source is not a git checkout: $SOURCE_DIR"
+    exit 1
+fi
+
+RESOLVED_HEAD=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+EXPECTED_HEAD=$(git -C "$SOURCE_DIR" rev-parse "$EXPECTED_GHOSTTY_REF^{commit}")
+if [ "$RESOLVED_HEAD" != "$EXPECTED_HEAD" ]; then
+    echo "[-] ghostty HEAD mismatch: expected $EXPECTED_HEAD, found $RESOLVED_HEAD"
+    exit 1
+fi
+
+if [ -n "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=all)" ]; then
+    echo "[-] ghostty source must be clean before patches are applied: $SOURCE_DIR"
+    git -C "$SOURCE_DIR" status --short
+    exit 1
+fi
+
+echo "[+] verified clean ghostty source: $RESOLVED_HEAD"
+
 apply_unified_patch() {
     local patch_file="$1"
 
-    if [ -d "$SOURCE_DIR/.git" ] && command -v git >/dev/null 2>&1; then
-        if git -C "$SOURCE_DIR" apply --check --reverse "$patch_file" >/dev/null 2>&1; then
-            echo "[+] patch already applied: $(basename "$patch_file")"
-            return
-        fi
-
+    if command -v git >/dev/null 2>&1 && git -C "$SOURCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         if ! git -C "$SOURCE_DIR" apply --check "$patch_file" >/dev/null 2>&1; then
             echo "[-] failed to validate patch: $patch_file"
             exit 1

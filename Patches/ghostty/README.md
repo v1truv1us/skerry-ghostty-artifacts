@@ -10,7 +10,9 @@ the `libghostty-spm` build pipeline.
   stable.
 - Use executable patch scripts (`.sh`) only when upstream context is too
   unstable for a reliable diff.
-- Every patch in this directory must be safe to re-run.
+- Every patch script should detect its own marker, but the orchestrator only
+  accepts a clean checkout at the pinned commit. This prevents partially
+  applied patch sets from being mistaken for a reproducible source state.
 - Patches here are applied automatically by `Script/build-ghostty.sh`, so they
   affect macOS, iOS, and Mac Catalyst builds equally.
 

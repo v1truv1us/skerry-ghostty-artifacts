@@ -107,19 +107,37 @@ fi
 
 if [ "$GHOSTTY_REF" != "HEAD" ]; then
     echo "[*] checking out ghostty ref: $GHOSTTY_REF"
-    git -C "$SOURCE_DIR" fetch --tags origin
+    if ! git -C "$SOURCE_DIR" rev-parse "$GHOSTTY_REF^{commit}" >/dev/null 2>&1; then
+        git -C "$SOURCE_DIR" fetch origin "$GHOSTTY_REF"
+    fi
     git -C "$SOURCE_DIR" checkout "$GHOSTTY_REF"
 fi
 
 RESOLVED_REF=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+if [ "$GHOSTTY_REF" != "HEAD" ]; then
+    EXPECTED_REF=$(git -C "$SOURCE_DIR" rev-parse "$GHOSTTY_REF^{commit}")
+    if [ "$RESOLVED_REF" != "$EXPECTED_REF" ]; then
+        echo "[!] ghostty HEAD mismatch: expected $EXPECTED_REF, found $RESOLVED_REF"
+        exit 1
+    fi
+fi
 echo "[*] ghostty source resolved to: $RESOLVED_REF"
+
+EXPECTED_GHOSTTY_REF="$RESOLVED_REF" ./Script/apply-patches.sh "$SOURCE_DIR"
+export SKIP_GHOSTTY_PATCHES=1
 
 ARTIFACTS_DIR="$ROOT_DIR/build/artifacts"
 XCFRAMEWORK_PATH="$ROOT_DIR/BinaryTarget/GhosttyKit.xcframework"
 XCFRAMEWORK_ZIP="$ROOT_DIR/build/GhosttyKit.xcframework.zip"
+STAGING_ROOT="$ROOT_DIR/build/staging"
+STAGED_ARTIFACTS_DIR="$STAGING_ROOT/artifacts"
+STAGED_XCFRAMEWORK_PATH="$STAGING_ROOT/GhosttyKit.xcframework"
+STAGED_XCFRAMEWORK_ZIP="$STAGING_ROOT/GhosttyKit.xcframework.zip"
+SDK_USAGE_FILE="$ROOT_DIR/build/libc/SDK_USAGE.txt"
 
-rm -rf "$ARTIFACTS_DIR" "$XCFRAMEWORK_PATH" "$XCFRAMEWORK_ZIP"
-mkdir -p "$ARTIFACTS_DIR" "$(dirname "$XCFRAMEWORK_PATH")"
+rm -rf "$ARTIFACTS_DIR" "$STAGING_ROOT"
+rm -f "$SDK_USAGE_FILE"
+mkdir -p "$ARTIFACTS_DIR" "$STAGED_ARTIFACTS_DIR" "$(dirname "$XCFRAMEWORK_PATH")"
 
 echo "[*] zig version: $(zig version)"
 echo "[*] ghostty source: $SOURCE_DIR"
@@ -133,13 +151,50 @@ IFS=$OLD_IFS
 for platform_group in "$@"; do
     platform_group=$(echo "$platform_group" | xargs)
     [ -n "$platform_group" ] || continue
-    ./Script/build-platform.sh "$SOURCE_DIR" "$platform_group" "$ARTIFACTS_DIR"
+    GHOSTTY_SDK_USAGE_FILE="$SDK_USAGE_FILE" \
+        ./Script/build-platform.sh "$SOURCE_DIR" "$platform_group" "$STAGED_ARTIFACTS_DIR"
 done
 
 ./Script/merge-xcframework.sh \
-    "$ARTIFACTS_DIR" \
-    "$XCFRAMEWORK_PATH" \
-    "$XCFRAMEWORK_ZIP"
+    "$STAGED_ARTIFACTS_DIR" \
+    "$STAGED_XCFRAMEWORK_PATH" \
+    "$STAGED_XCFRAMEWORK_ZIP"
+
+# Do not remove the last usable binary until every requested slice has built
+# and a complete replacement XCFramework + zip exists in staging.
+rm -rf "$XCFRAMEWORK_PATH"
+rm -f "$XCFRAMEWORK_ZIP"
+mv "$STAGED_XCFRAMEWORK_PATH" "$XCFRAMEWORK_PATH"
+mv "$STAGED_XCFRAMEWORK_ZIP" "$XCFRAMEWORK_ZIP"
+rm -rf "$STAGING_ROOT"
+
+BUILD_INFO="$ROOT_DIR/build/BUILD_INFO.txt"
+ARTIFACT_SHA256=$(shasum -a 256 "$XCFRAMEWORK_ZIP" | cut -d ' ' -f 1)
+SWIFTPM_CHECKSUM=$(swift package compute-checksum "$XCFRAMEWORK_ZIP")
+{
+    echo "ghostty_repository=https://github.com/ghostty-org/ghostty"
+    echo "ghostty_ref=$GHOSTTY_REF"
+    echo "ghostty_resolved_commit=$RESOLVED_REF"
+    echo "xcode=$(xcodebuild -version | paste -sd ' ' -)"
+    echo "zig=$(zig version)"
+    echo "swift=$(swift --version | head -n 1)"
+    echo "compatibility_sdks:"
+    if [ -f "$SDK_USAGE_FILE" ]; then
+        while IFS=$'\t' read -r target sdk_version sdk_path; do
+            echo "  $target sdk=$sdk_version path=$sdk_path"
+        done < "$SDK_USAGE_FILE"
+    fi
+    echo "artifact=build/GhosttyKit.xcframework.zip"
+    echo "artifact_sha256=$ARTIFACT_SHA256"
+    echo "artifact_swiftpm_checksum=$SWIFTPM_CHECKSUM"
+    echo "patches:"
+    for patch_file in "$ROOT_DIR"/Patches/ghostty/*; do
+        [ -f "$patch_file" ] || continue
+        [ "${patch_file##*.}" = "md" ] && continue
+        echo "  $(basename "$patch_file") $(shasum -a 256 "$patch_file" | cut -d ' ' -f 1)"
+    done
+    echo "licensing=Ghostty source and linked dependencies retain their upstream licenses; review redistribution obligations before publishing the binary."
+} > "$BUILD_INFO"
 
 if [ -n "$DOWNLOAD_URL" ]; then
     ./Script/build-manifest.sh "$XCFRAMEWORK_ZIP" "$DOWNLOAD_URL"
@@ -152,3 +207,6 @@ fi
 
 echo "[*] xcframework: $XCFRAMEWORK_PATH"
 echo "[*] zip: $XCFRAMEWORK_ZIP"
+echo "[*] build info: $BUILD_INFO"
+echo "[*] sha256: $ARTIFACT_SHA256"
+echo "[*] swiftpm checksum: $SWIFTPM_CHECKSUM"

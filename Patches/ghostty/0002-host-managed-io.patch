@@ -29,20 +29,20 @@ index 40ff55c..4c4f01b 100644
    double scale_factor;
    float font_size;
    const char* working_directory;
-@@ -1080,6 +1096,8 @@ ghostty_surface_config_s ghostty_surface_inherited_config(ghostty_surface_t, gho
- void ghostty_surface_update_config(ghostty_surface_t, ghostty_config_t);
- bool ghostty_surface_needs_confirm_quit(ghostty_surface_t);
- bool ghostty_surface_process_exited(ghostty_surface_t);
-+void ghostty_surface_write_buffer(ghostty_surface_t, const uint8_t*, uintptr_t);
-+void ghostty_surface_process_exit(ghostty_surface_t, uint32_t, uint64_t);
- void ghostty_surface_refresh(ghostty_surface_t);
- void ghostty_surface_draw(ghostty_surface_t);
- void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+@@ -1107,6 +1123,8 @@ GHOSTTY_API ghostty_surface_config_s ghostty_surface_inherited_config(ghostty_surface_t, gho
+ GHOSTTY_API void ghostty_surface_update_config(ghostty_surface_t, ghostty_config_t);
+ GHOSTTY_API bool ghostty_surface_needs_confirm_quit(ghostty_surface_t);
+ GHOSTTY_API bool ghostty_surface_process_exited(ghostty_surface_t);
++GHOSTTY_API void ghostty_surface_write_buffer(ghostty_surface_t, const uint8_t*, uintptr_t);
++GHOSTTY_API void ghostty_surface_process_exit(ghostty_surface_t, uint32_t, uint64_t);
+ GHOSTTY_API void ghostty_surface_refresh(ghostty_surface_t);
+ GHOSTTY_API void ghostty_surface_draw(ghostty_surface_t);
+ GHOSTTY_API void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
 diff --git a/src/Surface.zig b/src/Surface.zig
 index 4d66622..145d113 100644
 --- a/src/Surface.zig
 +++ b/src/Surface.zig
-@@ -620,34 +620,42 @@ pub fn init(
+@@ -620,40 +620,48 @@ pub fn init(
      // This separate block ({}) is important because our errdefers must
      // be scoped here to be valid.
      {
@@ -61,6 +61,12 @@ index 4d66622..145d113 100644
 +                errdefer env.deinit();
 +
 +                env.remove("GHOSTTY_LOG");
++
++                var buf: [18]u8 = undefined;
++                try env.put(
++                    "GHOSTTY_SURFACE_ID",
++                    std.fmt.bufPrint(&buf, "0x{x:0>16}", .{self.id}) catch unreachable,
++                );
 +
 +                var io_exec = try termio.Exec.init(alloc, .{
 +                    .command = command,
@@ -90,6 +96,12 @@ index 4d66622..145d113 100644
 -
 -        // don't leak GHOSTTY_LOG to any subprocesses
 -        env.remove("GHOSTTY_LOG");
+-
+-        var buf: [18]u8 = undefined;
+-        try env.put(
+-            "GHOSTTY_SURFACE_ID",
+-            std.fmt.bufPrint(&buf, "0x{x:0>16}", .{self.id}) catch unreachable,
+-        );
 -
 -        // Initialize our IO backend
 -        var io_exec = try termio.Exec.init(alloc, .{
@@ -490,7 +502,7 @@ index ae0e200..f1d35d2 100644
          }
      }
  
-@@ -98,6 +109,12 @@ pub const Backend = union(Kind) {
+@@ -98,5 +109,11 @@ pub const Backend = union(Kind) {
                  exit_code,
                  runtime_ms,
              ),
@@ -502,8 +514,17 @@ index ae0e200..f1d35d2 100644
 +            ),
          }
      }
+@@ -105,19 +122,22 @@ pub const Backend = union(Kind) {
+     /// Get information about the process(es) attached to the backend. Returns
+     /// `null` if there was an error getting the information or the information
+     /// is not available on a particular platform.
+     pub fn getProcessInfo(self: *Backend, comptime info: ProcessInfo) ?ProcessInfo.Type(info) {
+         return switch (self.*) {
+             .exec => |*exec| exec.getProcessInfo(info),
++            .host_managed => null,
+         };
+     }
  };
-@@ -105,10 +122,12 @@ pub const Backend = union(Kind) {
  /// Termio thread data. See termio.ThreadData for docs.
  pub const ThreadData = union(Kind) {
      exec: termio.Exec.ThreadData,

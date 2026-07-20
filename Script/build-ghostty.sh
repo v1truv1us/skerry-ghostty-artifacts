@@ -15,6 +15,7 @@ ZIG_TARGET=${2:-}
 OUTPUT_DIR=${3:-}
 ZIG_CPU=${ZIG_CPU:-}
 ZIG_BUILD_EXTRA_ARGS=${ZIG_BUILD_EXTRA_ARGS:-}
+ZIG_LIBC_MANIFEST=${ZIG_LIBC_MANIFEST:-}
 
 if [ -z "$SOURCE_DIR" ] || [ -z "$ZIG_TARGET" ] || [ -z "$OUTPUT_DIR" ]; then
     echo "Usage: $0 <source_dir> <zig_target> <output_dir>"
@@ -36,7 +37,9 @@ if ! command -v zig >/dev/null 2>&1; then
     exit 1
 fi
 
-./Script/apply-patches.sh "$SOURCE_DIR"
+if [ "${SKIP_GHOSTTY_PATCHES:-0}" != "1" ]; then
+    ./Script/apply-patches.sh "$SOURCE_DIR"
+fi
 
 CACHE_ROOT="${BUILD_CACHE_ROOT:-$ROOT_DIR/build/cache}"
 GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$CACHE_ROOT/zig-global}"
@@ -74,6 +77,14 @@ ZIG_BUILD_COMMAND=(
 
 if [ -n "$ZIG_CPU" ]; then
     ZIG_BUILD_COMMAND+=("-Dcpu=$ZIG_CPU")
+fi
+
+if [ -n "$ZIG_LIBC_MANIFEST" ]; then
+    if [ ! -f "$ZIG_LIBC_MANIFEST" ]; then
+        echo "[!] Zig libc manifest not found: $ZIG_LIBC_MANIFEST"
+        exit 1
+    fi
+    ZIG_BUILD_COMMAND+=("--libc" "$ZIG_LIBC_MANIFEST")
 fi
 
 if [ -n "$ZIG_BUILD_EXTRA_ARGS" ]; then

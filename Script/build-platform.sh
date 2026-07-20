@@ -23,6 +23,67 @@ if [ ! -d "$SOURCE_DIR" ]; then
     exit 1
 fi
 
+if [ "${SKIP_GHOSTTY_PATCHES:-0}" != "1" ]; then
+    ./Script/apply-patches.sh "$SOURCE_DIR"
+    export SKIP_GHOSTTY_PATCHES=1
+fi
+
+SDK_ROOT=${GHOSTTY_SDK_ROOT:-"$HOME/tools/sdks"}
+LIBC_MANIFEST_DIR=${GHOSTTY_LIBC_MANIFEST_DIR:-"$(pwd)/build/libc"}
+SDK_USAGE_FILE=${GHOSTTY_SDK_USAGE_FILE:-"$LIBC_MANIFEST_DIR/SDK_USAGE.txt"}
+
+resolve_sdk() {
+    local sdk_name="$1"
+    local sdk_path=
+
+    for sdk_path in \
+        "$SDK_ROOT/$sdk_name" \
+        "/Library/Developer/CommandLineTools/SDKs/$sdk_name"
+    do
+        if [ -d "$sdk_path/usr/include" ] && [ -d "$sdk_path/usr/lib" ]; then
+            printf '%s\n' "$sdk_path"
+            return
+        fi
+    done
+
+    echo "[!] required compatibility SDK not found: $sdk_name" >&2
+    echo "[!] searched $SDK_ROOT and /Library/Developer/CommandLineTools/SDKs" >&2
+    exit 1
+}
+
+sdk_for_target() {
+    local target="$1"
+
+    case "$target" in
+        *-ios-simulator)
+            resolve_sdk "iPhoneSimulator18.4.sdk"
+            ;;
+        *-ios-macabi | *-macos)
+            resolve_sdk "MacOSX15.4.sdk"
+            ;;
+        *-ios)
+            resolve_sdk "iPhoneOS18.4.sdk"
+            ;;
+        *)
+            echo "[!] no compatibility SDK mapping for Zig target: $target" >&2
+            exit 1
+            ;;
+    esac
+}
+
+libc_manifest_for_target() {
+    local target="$1"
+    local sdk_path
+    local manifest_path="$LIBC_MANIFEST_DIR/$target.txt"
+    local sdk_version
+
+    sdk_path=$(sdk_for_target "$target")
+    ./Script/generate-libc-manifest.sh "$sdk_path" "$manifest_path" >&2
+    sdk_version=$(/usr/bin/plutil -extract Version raw "$sdk_path/SDKSettings.json")
+    printf '%s\t%s\t%s\n' "$target" "$sdk_version" "$sdk_path" >>"$SDK_USAGE_FILE"
+    printf '%s\n' "$manifest_path"
+}
+
 build_variant() {
     local variant_name="$1"
     shift
@@ -31,9 +92,10 @@ build_variant() {
     local intermediate_dir="$OUTPUT_DIR/.intermediates/$variant_name"
     local first_headers=
     local libraries=()
-    local target_spec=
-    local target=
-    local cpu=
+        local target_spec=
+        local target=
+        local cpu=
+        local libc_manifest=
 
     rm -rf "$variant_dir" "$intermediate_dir"
     mkdir -p "$variant_dir/lib" "$variant_dir/include" "$intermediate_dir"
@@ -45,11 +107,15 @@ build_variant() {
             cpu=${target_spec#*@}
         fi
 
+        libc_manifest=$(libc_manifest_for_target "$target")
+
         local target_dir="$intermediate_dir/$target"
         if [ -n "$cpu" ]; then
-            env ZIG_CPU="$cpu" ./Script/build-ghostty.sh "$SOURCE_DIR" "$target" "$target_dir"
+            env ZIG_CPU="$cpu" ZIG_LIBC_MANIFEST="$libc_manifest" \
+                ./Script/build-ghostty.sh "$SOURCE_DIR" "$target" "$target_dir"
         else
-            ./Script/build-ghostty.sh "$SOURCE_DIR" "$target" "$target_dir"
+            env ZIG_LIBC_MANIFEST="$libc_manifest" \
+                ./Script/build-ghostty.sh "$SOURCE_DIR" "$target" "$target_dir"
         fi
         libraries+=("$target_dir/lib/libghostty.a")
         if [ -z "$first_headers" ]; then

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ghostty_ref:
-        description: "Ghostty tag or commit. Leave empty to auto-detect latest."
+        description: "Ghostty commit. Leave empty to use GHOSTTY_REF."
         required: false
         type: string
         default: ""
@@ -54,11 +54,8 @@ jobs:
             BUILD_REF="$INPUT_REF"
             echo "[*] using provided ghostty ref: $BUILD_REF"
           else
-            BUILD_REF=$(
-              gh api "repos/ghostty-org/ghostty/tags?per_page=100" --paginate --jq '.[].name' |
-                python3 -c 'import re, sys; tags = [line.strip() for line in sys.stdin if re.fullmatch(r"v?\d+\.\d+\.\d+", line.strip())]; print(max(tags, key=lambda tag: tuple(int(part) for part in (tag[1:] if tag.startswith("v") else tag).split("."))), end="")'
-            )
-            echo "[*] upstream ghostty ref: $BUILD_REF"
+            BUILD_REF=$(tr -d '[:space:]' < GHOSTTY_REF)
+            echo "[*] pinned ghostty ref: $BUILD_REF"
           fi
 
           if [ -z "$BUILD_REF" ]; then
@@ -165,6 +162,8 @@ jobs:
         run: |
           git clone https://github.com/ghostty-org/ghostty ./References/ghostty-upstream
           git -C ./References/ghostty-upstream checkout "${{ needs.prepare.outputs.build_ref }}"
+          test "$(git -C ./References/ghostty-upstream rev-parse HEAD)" = "${{ needs.prepare.outputs.resolved_sha }}"
+          test -z "$(git -C ./References/ghostty-upstream status --porcelain --untracked-files=all)"
 
       - name: Build Target
         run: |

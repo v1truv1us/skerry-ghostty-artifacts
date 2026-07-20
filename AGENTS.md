@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+When this package is edited inside Skerry, also follow `../../AGENTS.md`. In
+particular, document lifecycle/concurrency/privacy reasoning, add a focused
+regression for user-visible failures, and update Skerry's status/runbook when
+package behavior or verification evidence changes.
+
 ## Project Overview
 
 SPM package wrapping Ghostty terminal emulator C library for Apple platforms (macOS 13+, iOS 16+, Mac Catalyst 16+). Four library products:
