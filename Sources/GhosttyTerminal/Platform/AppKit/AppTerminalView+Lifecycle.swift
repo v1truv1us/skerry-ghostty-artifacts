@@ -149,8 +149,11 @@
 
         override func layout() {
             super.layout()
-            core.synchronizeMetrics()
-            core.requestImmediateTick()
+            // AppKit can invoke layout() for an ancestor's relayout even when
+            // this view's own bounds are unchanged, so use the size-gated
+            // variant to skip the FFI resize and forced redraw when nothing
+            // actually moved (mirrors the iOS layoutSubviews fix).
+            core.fitToSizeIfChanged()
         }
 
         override func viewDidChangeBackingProperties() {

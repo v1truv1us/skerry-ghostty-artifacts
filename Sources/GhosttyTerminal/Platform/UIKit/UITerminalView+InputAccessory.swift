@@ -71,8 +71,6 @@
             usage: UInt16,
             additionalMods: TerminalInputModifiers = []
         ) {
-            guard let surface else { return }
-
             if inputHandler.hasMarkedText {
                 inputHandler.unmarkText()
             }
@@ -87,6 +85,7 @@
             )
 
             if !additionalMods.isEmpty, let ghosttyKey = ghosttyKey(from: delivery) {
+                guard let surface else { return }
                 var event = ghostty_input_key_s()
                 event.action = GHOSTTY_ACTION_PRESS
                 event.keycode = TerminalHardwareKeyRouter.appKitKeyCode(
@@ -103,6 +102,7 @@
                 session.sendInput(data)
 
             case let .ghostty(ghosttyKey):
+                guard let surface else { return }
                 var event = ghostty_input_key_s()
                 event.action = GHOSTTY_ACTION_PRESS
                 event.keycode = TerminalHardwareKeyRouter.appKitKeyCode(

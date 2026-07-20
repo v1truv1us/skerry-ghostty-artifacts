@@ -217,7 +217,11 @@
             becomeFirstResponder()
             hideSelectionHandles()
             guard let surface else { return }
-            let mods = ghostty_input_mods_e(rawValue: 0)
+            // Ghostty intentionally activates recognized links with Command-click
+            // on Apple platforms. A direct touch has no hardware modifier, so it
+            // must emulate Command for URL activation to be reachable on iPhone
+            // and iPad. Non-link mouse events continue through Ghostty normally.
+            let mods = TerminalInputModifiers.super_.ghosttyMods
             surface.sendMousePos(x: location.x, y: location.y, mods: mods)
             surface.sendMouseButton(
                 state: GHOSTTY_MOUSE_PRESS,

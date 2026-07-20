@@ -42,6 +42,10 @@ public final class TerminalViewState {
     /// react to the event itself (post a notification, refresh tmux window
     /// flags) instead of only observing the counter.
     public var onAttention: (() -> Void)?
+    /// Called only after Ghostty recognizes and the user activates a link.
+    /// The host owns URL validation and system opening; the terminal package
+    /// never opens remote-controlled schemes on its own.
+    public var onOpenURL: ((String, TerminalOpenURLKind) -> Void)?
     public internal(set) var isSearchActive = false
     public internal(set) var searchMatchCount = 0
     public internal(set) var searchSelectedIndex = 0

@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import Foundation
 import GhosttyKit
 @testable import GhosttyTerminal
@@ -141,6 +143,7 @@ struct TerminalHardwareKeyRouterTests {
         )
     }
 
+    #if canImport(AppKit)
     @Test
     func appKitInterpretedCommandsAreReplayedAsKeyEvents() {
         #expect(
@@ -159,6 +162,7 @@ struct TerminalHardwareKeyRouterTests {
             )
         )
     }
+    #endif
 
     /// Quote HID 0x34 must translate to AppKit keycode 0x27, not fall
     /// through to `0` (which is AppKit's keycode for the `A` key) nor to
@@ -353,6 +357,7 @@ struct TerminalHardwareKeyRouterTests {
         #expect(TerminalHardwareKeyRouter.appKitKeyCodeForUIKit(usage: 0x0001) == sentinel)
     }
 
+    #if canImport(AppKit)
     @Test
     func appKitDirectInputRequiresNoModifiers() {
         #expect(
@@ -381,4 +386,5 @@ struct TerminalHardwareKeyRouterTests {
             )
         )
     }
+    #endif
 }

@@ -65,6 +65,7 @@ final class TerminalSurfaceCoordinator {
     var onPostRender: (() -> Void)?
 
     private var lastMetrics: TerminalViewportMetrics?
+    private var lastSynchronizedLayoutSize: (width: UInt32, height: UInt32, scale: Double)?
     private var isDisplayVisible = true
     private var isSurfaceFocused = false
     private var pendingImmediateTick = true
@@ -215,6 +216,27 @@ final class TerminalSurfaceCoordinator {
         requestImmediateTick()
     }
 
+    /// Layout passes on an ancestor view (a SwiftUI relayout, a sibling
+    /// split-divider drag, keyboard show/hide elsewhere in the hierarchy)
+    /// can invoke `layoutSubviews`/`layout` even when this surface's own
+    /// pixel size is unchanged. Route those through here instead of
+    /// `fitToSize()` so a spurious relayout does not pay the FFI resize +
+    /// forced Metal redraw cost on every pass; a real size/scale change
+    /// still gets the full synchronize-and-render pairing `fitToSize()`
+    /// guarantees.
+    func fitToSizeIfChanged() {
+        let scale = scaleFactor()
+        let size = viewSize()
+        let pixelWidth = UInt32((size.width * scale).rounded(.down))
+        let pixelHeight = UInt32((size.height * scale).rounded(.down))
+        let layoutSize = (width: pixelWidth, height: pixelHeight, scale: scale)
+        if let lastSynchronizedLayoutSize, lastSynchronizedLayoutSize == layoutSize {
+            return
+        }
+        lastSynchronizedLayoutSize = layoutSize
+        fitToSize()
+    }
+
     func setDisplayVisible(_ visible: Bool) {
         guard isDisplayVisible != visible else {
             surface?.setOcclusion(visible)
@@ -288,6 +310,7 @@ final class TerminalSurfaceCoordinator {
         surface?.free()
         surface = nil
         lastMetrics = nil
+        lastSynchronizedLayoutSize = nil
         pendingImmediateTick = true
         lastTickTimestamp = 0
         controller?.remove(bridge)

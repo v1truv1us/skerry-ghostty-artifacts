@@ -15,6 +15,7 @@ extension TerminalViewState:
     TerminalSurfaceCloseDelegate,
     TerminalSurfaceBellDelegate,
     TerminalSurfaceDesktopNotificationDelegate,
+    TerminalSurfaceOpenURLDelegate,
     TerminalSurfaceSearchDelegate,
     TerminalSurfaceScrollbarDelegate
 {
@@ -42,6 +43,10 @@ extension TerminalViewState:
     public func terminalDidRequestDesktopNotification() {
         attentionEventCount &+= 1
         onAttention?()
+    }
+
+    public func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
+        onOpenURL?(url, kind)
     }
 
     public func terminalDidStartSearch() {

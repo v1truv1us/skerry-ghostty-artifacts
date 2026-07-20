@@ -24,6 +24,51 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertFalse(terminal.canBecomeFirstResponder)
     }
 
+    /// Rotation changes the terminal bounds without producing PTY output. A
+    /// layout resize must actually resynchronize Ghostty's grid to the new
+    /// bounds and schedule a render of that resized state — not merely
+    /// produce *some* rendered frame, which the demand-tick pump can fire
+    /// even when synchronizeMetrics() no-ops against a missing surface. This
+    /// attaches a real controller + in-memory surface so the grid-size
+    /// assertion actually exercises the resize path, not just tick delivery.
+    func testLayoutResizeSchedulesAFrameWithoutTerminalOutput() async throws {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        terminal.controller = TerminalController()
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: terminal.bounds)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        // Drain attachment/layout work before observing the rotation-sized
+        // layout independently.
+        await Task.yield()
+        await Task.yield()
+
+        let surface = try XCTUnwrap(terminal.surface, "expected a live surface for a windowed, configured terminal")
+        let initialSize = try XCTUnwrap(surface.size())
+
+        var renderedFrameCount = 0
+        terminal.postRenderHandler = { renderedFrameCount += 1 }
+
+        terminal.frame = CGRect(x: 0, y: 0, width: 480, height: 320)
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertGreaterThan(renderedFrameCount, 0)
+        let resizedSize = try XCTUnwrap(surface.size())
+        XCTAssertNotEqual(
+            resizedSize.columns,
+            initialSize.columns,
+            "rotation must resynchronize the grid to the new bounds, not just fire an unrelated tick"
+        )
+    }
+
     func testHostManagedInputBarRetargetsWeaklyAndSuppressesBundledAccessory() {
         var firstTerminal: UITerminalView? = UITerminalView(frame: .zero)
         let secondTerminal = UITerminalView(frame: .zero)
@@ -72,6 +117,27 @@ final class UITerminalInspectionTests: XCTestCase {
         secondTerminal.inputAccessoryActions = [testAction(id: "updated") { secondActionCount += 10 }]
         try tapButton(label: "Action updated", in: inputBar)
         XCTAssertEqual(secondActionCount, 11)
+    }
+
+    /// The host-managed accessory bar remains usable while UIKit is rebuilding
+    /// the render surface during a tab or foreground transition. Unmodified
+    /// Tab is raw terminal input and does not depend on a Ghostty surface.
+    func testHostManagedTabSendsRawByteWithoutRenderedSurface() throws {
+        let recorder = TerminalInputRecorder()
+        let session = InMemoryTerminalSession(
+            write: { recorder.append($0) },
+            resize: { _ in }
+        )
+        let terminal = UITerminalView(frame: .zero)
+        terminal.configuration = TerminalSurfaceOptions(
+            backend: .inMemory(session)
+        )
+        terminal.isResponderEligible = true
+        let inputBar = TerminalInputBar(terminalView: terminal)
+
+        try tapButton(label: "Tab", in: inputBar)
+
+        XCTAssertEqual(recorder.data, Data([0x09]))
     }
 
     func testHostManagedInputBarRejectsCommandsForAnIneligibleTarget() throws {
@@ -183,7 +249,24 @@ final class UITerminalInspectionTests: XCTestCase {
         if let button = view as? UIButton, button.accessibilityLabel == label {
             return button
         }
-        return view.subviews.lazy.compactMap { findButton(label: label, in: $0) }.first
+        return view.subviews.lazy.compactMap { self.findButton(label: label, in: $0) }.first
+    }
+}
+
+private final class TerminalInputRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    var data: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        storage.append(data)
+        lock.unlock()
     }
 }
 
@@ -195,7 +278,10 @@ private final class TestPanGestureRecognizer: UIPanGestureRecognizer {
         super.init(target: nil, action: nil)
     }
 
-    override var state: UIGestureRecognizer.State { testState }
+    override var state: UIGestureRecognizer.State {
+        get { testState }
+        set { /* Test state is fixed at construction. */ }
+    }
 }
 
 private final class TestLongPressGestureRecognizer: UILongPressGestureRecognizer {
@@ -206,7 +292,10 @@ private final class TestLongPressGestureRecognizer: UILongPressGestureRecognizer
         super.init(target: nil, action: nil)
     }
 
-    override var state: UIGestureRecognizer.State { testState }
+    override var state: UIGestureRecognizer.State {
+        get { testState }
+        set { /* Test state is fixed at construction. */ }
+    }
 }
 
 private final class TestPinchGestureRecognizer: UIPinchGestureRecognizer {
@@ -218,6 +307,9 @@ private final class TestPinchGestureRecognizer: UIPinchGestureRecognizer {
         self.scale = scale
     }
 
-    override var state: UIGestureRecognizer.State { testState }
+    override var state: UIGestureRecognizer.State {
+        get { testState }
+        set { /* Test state is fixed at construction. */ }
+    }
 }
 #endif

@@ -30,11 +30,17 @@
                 updateColorScheme()
                 core.startDisplayLink()
                 // Defer sublayer frame and metrics sync to the next runloop
-                // so that AutoLayout has resolved final bounds.
+                // so that AutoLayout has resolved final bounds. The earlier
+                // requestImmediateTick() above can already have consumed the
+                // pending-tick flag against the pre-reattach bounds (e.g. a
+                // SwiftUI detach/reattach mid-rotation), so this deferred
+                // sync must schedule its own tick rather than rely on that
+                // one — otherwise the surface keeps showing a frame rendered
+                // against stale bounds until unrelated output arrives.
                 DispatchQueue.main.async { [weak self] in
                     guard let self, window != nil else { return }
                     updateSublayerFrames()
-                    core.synchronizeMetrics()
+                    core.fitToSize()
                 }
             } else {
                 core.stopDisplayLink()
@@ -49,7 +55,16 @@
                 "layoutSubviews bounds=\(NSCoder.string(for: bounds))"
             )
             updateSublayerFrames()
-            core.synchronizeMetrics()
+            // Resizing can replace Ghostty's IOSurface. Synchronizing its new
+            // grid without scheduling the required full render leaves an idle
+            // terminal black after rotation until unrelated output arrives.
+            // Keep resize and repaint one lifecycle operation while retaining
+            // the same surface/controller and their terminal state. UIKit can
+            // invoke layoutSubviews for an ancestor's relayout even when this
+            // view's own bounds are unchanged (e.g. a sibling split-divider
+            // drag), so use the size-gated variant to skip the FFI resize and
+            // forced redraw when nothing actually moved.
+            core.fitToSizeIfChanged()
         }
 
         internal func resolvedDisplayScale() -> CGFloat {

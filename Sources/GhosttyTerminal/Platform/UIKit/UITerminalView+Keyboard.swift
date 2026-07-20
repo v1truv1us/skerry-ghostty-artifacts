@@ -217,7 +217,9 @@
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                core.synchronizeMetrics()
+                // Same as the pinch-zoom path: a keyboard-driven font-size
+                // change needs its own scheduled render.
+                core.fitToSize()
                 refreshTextInputGeometry(
                     reason: "keyboard-zoom-\(direction.rawValue)"
                 )

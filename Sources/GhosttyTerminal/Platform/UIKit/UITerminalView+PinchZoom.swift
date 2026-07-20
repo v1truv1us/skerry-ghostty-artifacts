@@ -70,7 +70,11 @@
             }
             currentFontSize = fontSize
             core.recordFontSize(fontSize)
-            core.synchronizeMetrics()
+            // A font-size change alters ghostty's internal cell size without
+            // changing this view's pixel bounds, so it needs its own
+            // scheduled render — nothing else guarantees the resynchronized
+            // grid actually gets drawn.
+            core.fitToSize()
             refreshTextInputGeometry(reason: "font-size-change")
             if publishesChange {
                 terminalFontSizeDidChange?(fontSize)
