@@ -57,7 +57,12 @@
         var momentumDisplayLink: CADisplayLink?
         var momentumVelocity: CGPoint = .zero
         #if !targetEnvironment(macCatalyst)
-            static let minFontSize: Float = 4
+            // Below 10 points the terminal becomes effectively unreadable on
+            // an iPhone while still looking like a successfully loaded pane.
+            // Keep interactive pinch/keyboard zoom aligned with the host's
+            // persisted preference floor so an in-memory surface cannot drift
+            // below the value the next launch accepts.
+            static let minFontSize: Float = 10
             static let maxFontSize: Float = 64
         #endif
         #if targetEnvironment(macCatalyst)
@@ -78,6 +83,29 @@
         var selectionStartPoint: CGPoint?
         var selectionEndPoint: CGPoint?
         var selectionHandleDragOrigin: CGPoint?
+        // Match UIKit's normal long-press intent threshold. The previous
+        // 0.35-second/28-point combination classified an ordinary deliberate
+        // one-finger drag as selection before scrolling could begin.
+        static let selectionMinimumPressDuration: TimeInterval = 0.5
+        static let selectionAllowableMovement: CGFloat = 10
+        lazy var terminalSelectionGestureRecognizer: UILongPressGestureRecognizer = {
+            let gesture = UILongPressGestureRecognizer(
+                target: self,
+                action: #selector(handleTerminalSelectionGesture(_:))
+            )
+            gesture.minimumPressDuration = Self.selectionMinimumPressDuration
+            gesture.allowableMovement = Self.selectionAllowableMovement
+            return gesture
+        }()
+        lazy var terminalScrollGestureRecognizer: UIPanGestureRecognizer = {
+            let gesture = UIPanGestureRecognizer(
+                target: self,
+                action: #selector(handleTouchScrollGesture(_:))
+            )
+            gesture.minimumNumberOfTouches = 1
+            gesture.maximumNumberOfTouches = 1
+            return gesture
+        }()
         lazy var startSelectionHandle = TerminalSelectionHandleView(edge: .start)
         lazy var endSelectionHandle = TerminalSelectionHandleView(edge: .end)
         #if !targetEnvironment(macCatalyst)
@@ -122,6 +150,13 @@
         /// When set, Skerry owns terminal touch navigation (for example, tmux window
         /// switching and copy-mode history). Returning false preserves Ghostty input.
         public var touchActionHandler: ((TerminalTouchAction) -> Bool)?
+
+        /// The host has independently confirmed that the active remote pane is
+        /// using an alternate screen without mouse reporting. Ghostty maps a
+        /// wheel to cursor keys in that state, so a host scrollback provider may
+        /// take one-finger vertical scrolling. Never infer this from mouse
+        /// capture alone: primary-screen scrollback must remain Ghostty-owned.
+        public var isUncapturedAlternateScreen = false
 
         /// Called after Ghostty completes a rendered frame. The callback must
         /// never inspect or receive terminal content.

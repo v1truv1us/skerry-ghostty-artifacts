@@ -163,28 +163,17 @@
             }
         #else
             func setupTouchScrollInput() {
-                let selectionGesture = UILongPressGestureRecognizer(
-                    target: self,
-                    action: #selector(handleTerminalSelectionGesture(_:))
-                )
-                selectionGesture.minimumPressDuration = 0.35
-                selectionGesture.allowableMovement = 28
-                addGestureRecognizer(selectionGesture)
+                addGestureRecognizer(terminalSelectionGestureRecognizer)
 
                 let tapGesture = UITapGestureRecognizer(
                     target: self,
                     action: #selector(handleTerminalTapGesture(_:))
                 )
-                tapGesture.require(toFail: selectionGesture)
+                tapGesture.require(toFail: terminalSelectionGestureRecognizer)
                 addGestureRecognizer(tapGesture)
 
-                let scrollGesture = UIPanGestureRecognizer(
-                    target: self,
-                    action: #selector(handleTouchScrollGesture(_:))
-                )
-                scrollGesture.maximumNumberOfTouches = 1
-                addGestureRecognizer(scrollGesture)
-                tapGesture.require(toFail: scrollGesture)
+                addGestureRecognizer(terminalScrollGestureRecognizer)
+                tapGesture.require(toFail: terminalScrollGestureRecognizer)
 
                 let windowSwipeGesture = UIPanGestureRecognizer(
                     target: self,
@@ -221,7 +210,9 @@
             // on Apple platforms. A direct touch has no hardware modifier, so it
             // must emulate Command for URL activation to be reachable on iPhone
             // and iPad. Non-link mouse events continue through Ghostty normally.
-            let mods = TerminalInputModifiers.super_.ghosttyMods
+            let mods = TerminalInputModifiers.linkActivation(
+                isMouseCaptured: surface.isMouseCaptured
+            ).ghosttyMods
             surface.sendMousePos(x: location.x, y: location.y, mods: mods)
             surface.sendMouseButton(
                 state: GHOSTTY_MOUSE_PRESS,
@@ -317,7 +308,8 @@
                 bufferedTouchScroll = .zero
                 touchScrollOwner = TerminalTouchScrollRouting.initialOwner(
                     isMouseCaptured: surface?.isMouseCaptured == true,
-                    hasHostHandler: touchActionHandler != nil
+                    hasHostHandler: touchActionHandler != nil,
+                    isUncapturedAlternateScreen: isUncapturedAlternateScreen
                 )
 
             case .changed:

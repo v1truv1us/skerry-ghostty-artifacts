@@ -183,6 +183,33 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertFalse(terminal.isFirstResponder)
     }
 
+    /// A normal one-finger scroll must get a chance to cross UIKit's pan
+    /// threshold before the terminal claims the touch as text selection. The
+    /// prior aggressive hold/movement values reproduced the user's drag as a
+    /// blue selection with the Copy menu instead of scrolling Claude/Codex.
+    func testOneFingerScrollingIsNotPrematurelyCapturedAsTextSelection() {
+        let terminal = UITerminalView(frame: .zero)
+
+        XCTAssertEqual(
+            terminal.terminalSelectionGestureRecognizer.minimumPressDuration,
+            UITerminalView.selectionMinimumPressDuration
+        )
+        XCTAssertEqual(
+            terminal.terminalSelectionGestureRecognizer.allowableMovement,
+            UITerminalView.selectionAllowableMovement
+        )
+        XCTAssertGreaterThanOrEqual(
+            terminal.terminalSelectionGestureRecognizer.minimumPressDuration,
+            0.5
+        )
+        XCTAssertLessThanOrEqual(
+            terminal.terminalSelectionGestureRecognizer.allowableMovement,
+            10
+        )
+        XCTAssertEqual(terminal.terminalScrollGestureRecognizer.minimumNumberOfTouches, 1)
+        XCTAssertEqual(terminal.terminalScrollGestureRecognizer.maximumNumberOfTouches, 1)
+    }
+
     func testHostFontSetterDoesNotPublishButInteractiveChangeDoes() {
         let terminal = UITerminalView(frame: .zero)
         var published: [Float] = []
@@ -215,6 +242,10 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertEqual(published.last, 64)
         XCTAssertEqual(published.filter { $0 == 64 }.count, 1)
         XCTAssertEqual(UITerminalView.validatedFontSize(12.5), 13)
+    }
+
+    func testPinchZoomCannotShrinkTerminalBelowReadableStartupSize() {
+        XCTAssertEqual(UITerminalView.validatedFontSize(7), 10)
     }
 
     private func makeEligibleWindowedTerminal() -> (UITerminalView, UIWindow) {

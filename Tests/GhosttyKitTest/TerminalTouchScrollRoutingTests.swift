@@ -6,23 +6,35 @@ struct TerminalTouchScrollRoutingTests {
     func mouseCapturedTerminalOwnsScrolling() {
         #expect(TerminalTouchScrollRouting.initialOwner(
             isMouseCaptured: true,
-            hasHostHandler: true
+            hasHostHandler: true,
+            isUncapturedAlternateScreen: true
         ) == .terminal)
     }
 
     @Test
-    func hostCanInterceptScrollingWithoutMouseCapture() {
+    func codexTouchScrollUsesHostScrollbackInsteadOfCyclingPromptHistory() {
         #expect(TerminalTouchScrollRouting.initialOwner(
             isMouseCaptured: false,
-            hasHostHandler: true
-        ) == .undecided)
+            hasHostHandler: true,
+            isUncapturedAlternateScreen: true
+        ) == .host)
+    }
+
+    @Test
+    func primaryScreenShellKeepsGhosttyScrollbackWithHostHandler() {
+        #expect(TerminalTouchScrollRouting.initialOwner(
+            isMouseCaptured: false,
+            hasHostHandler: true,
+            isUncapturedAlternateScreen: false
+        ) == .terminal)
     }
 
     @Test
     func terminalOwnsScrollingWithoutHostHandler() {
         #expect(TerminalTouchScrollRouting.initialOwner(
             isMouseCaptured: false,
-            hasHostHandler: false
+            hasHostHandler: false,
+            isUncapturedAlternateScreen: true
         ) == .terminal)
     }
 }

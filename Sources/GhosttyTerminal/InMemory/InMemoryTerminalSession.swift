@@ -131,6 +131,25 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
         writeHandler(data)
     }
 
+    /// Sends user-approved text through Ghostty's paste encoder.
+    ///
+    /// The surface owns terminal mode state, including DECSET 2004. Hosts must
+    /// use this path for synthetic paste operations instead of guessing whether
+    /// bracketed-paste markers are currently required. The text is deliberately
+    /// not logged because host applications may use this for private paths.
+    @discardableResult
+    public func sendPastedText(_ text: String) -> Bool {
+        lock.lock()
+        let activeSurface = surface
+        lock.unlock()
+
+        guard let activeSurface else { return false }
+        text.withCString { cString in
+            ghostty_surface_text(activeSurface, cString, UInt(text.utf8.count))
+        }
+        return true
+    }
+
     // MARK: - Process Exit
 
     /// Signal that the host-managed process has exited.
