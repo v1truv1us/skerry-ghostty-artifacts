@@ -133,10 +133,8 @@ STAGING_ROOT="$ROOT_DIR/build/staging"
 STAGED_ARTIFACTS_DIR="$STAGING_ROOT/artifacts"
 STAGED_XCFRAMEWORK_PATH="$STAGING_ROOT/GhosttyKit.xcframework"
 STAGED_XCFRAMEWORK_ZIP="$STAGING_ROOT/GhosttyKit.xcframework.zip"
-SDK_USAGE_FILE="$ROOT_DIR/build/libc/SDK_USAGE.txt"
 
 rm -rf "$ARTIFACTS_DIR" "$STAGING_ROOT"
-rm -f "$SDK_USAGE_FILE"
 mkdir -p "$ARTIFACTS_DIR" "$STAGED_ARTIFACTS_DIR" "$(dirname "$XCFRAMEWORK_PATH")"
 
 echo "[*] zig version: $(zig version)"
@@ -151,8 +149,7 @@ IFS=$OLD_IFS
 for platform_group in "$@"; do
     platform_group=$(echo "$platform_group" | xargs)
     [ -n "$platform_group" ] || continue
-    GHOSTTY_SDK_USAGE_FILE="$SDK_USAGE_FILE" \
-        ./Script/build-platform.sh "$SOURCE_DIR" "$platform_group" "$STAGED_ARTIFACTS_DIR"
+    ./Script/build-platform.sh "$SOURCE_DIR" "$platform_group" "$STAGED_ARTIFACTS_DIR"
 done
 
 ./Script/merge-xcframework.sh \
@@ -178,12 +175,10 @@ SWIFTPM_CHECKSUM=$(swift package compute-checksum "$XCFRAMEWORK_ZIP")
     echo "xcode=$(xcodebuild -version | paste -sd ' ' -)"
     echo "zig=$(zig version)"
     echo "swift=$(swift --version | head -n 1)"
-    echo "compatibility_sdks:"
-    if [ -f "$SDK_USAGE_FILE" ]; then
-        while IFS=$'\t' read -r target sdk_version sdk_path; do
-            echo "  $target sdk=$sdk_version path=$sdk_path"
-        done < "$SDK_USAGE_FILE"
-    fi
+    echo "sdk_versions:"
+    echo "  macosx=$(xcrun --sdk macosx --show-sdk-version)"
+    echo "  iphoneos=$(xcrun --sdk iphoneos --show-sdk-version)"
+    echo "  iphonesimulator=$(xcrun --sdk iphonesimulator --show-sdk-version)"
     echo "artifact=build/GhosttyKit.xcframework.zip"
     echo "artifact_sha256=$ARTIFACT_SHA256"
     echo "artifact_swiftpm_checksum=$SWIFTPM_CHECKSUM"

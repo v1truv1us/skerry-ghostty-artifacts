@@ -1,9 +1,31 @@
 # Toolchain versions required by the current reproducibility work.
 #
 # build.sh records each artifact's exact source, patch hashes, tool versions,
-# compatibility SDKs, and checksums in build/BUILD_INFO.txt. The full pinned
-# source build has not yet completed with the iOS SDKs, so do not describe these
-# pins as verified until that clean rebuild and package test pass exists.
+# and checksums in build/BUILD_INFO.txt. The full pinned source build has not
+# yet completed locally, so do not describe these pins as verified until that
+# clean rebuild and package test pass exists.
+#
+# Confirmed 2026-07-24, testing directly against Xcode 26.5 (SDK 26.5) with
+# no compatibility-SDK layer:
+# - Ghostty at GHOSTTY_REF hard-requires exactly Zig 0.15.2
+#   (src/build/zig.zig's requireZig check; Zig 0.16.0 also breaks on an
+#   unrelated std.Io.Dir.readFileAlloc signature change in build.zig).
+# - Zig 0.15.2 has a genuine bug linking its own build-runner host tool
+#   against the SDK 26.5 (Darwin 26.x) toolchain — reproduced with a
+#   minimal `zig build` project with no Ghostty involved at all. Neither
+#   SDKROOT nor MACOSX_DEPLOYMENT_TARGET env overrides route around it.
+#   Zig 0.16.0 does not hit this bug, but can't be used here (see above).
+# - A clean from-source rebuild therefore needs an Xcode/SDK combination
+#   Zig 0.15.2 can actually link against (e.g. the iOS/iOS Simulator 18.4
+#   and macOS 15.4 SDKs below), which on this machine means installing an
+#   older Xcode (the macOS 15.4 SDK is already present via Command Line
+#   Tools, but the iOS 18.4 SDKs are not) — gated behind a developer's own
+#   Apple ID sign-in, not something automatable here.
+#
+# Until that rebuild happens, local development consumes upstream's
+# published, checksummed binary release built from this same GHOSTTY_REF:
+# https://github.com/Lakr233/libghostty-spm/releases/download/storage.1.3.1/GhosttyKit.xcframework.zip
+# sha256: cfb3fbbfe1365e4c90e01969e2576b4dfa33f04975bcafd84c6368514f791fe9
 
 xcode=26.5 (17F42)
 zig=0.15.2
@@ -11,4 +33,4 @@ swift=6.3.2
 macos_sdk=15.4
 iphoneos_sdk=18.4
 iphonesimulator_sdk=18.4
-recorded=2026-07-19
+recorded=2026-07-24

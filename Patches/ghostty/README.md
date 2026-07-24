@@ -13,6 +13,11 @@ the `libghostty-spm` build pipeline.
 - Every patch script should detect its own marker, but the orchestrator only
   accepts a clean checkout at the pinned commit. This prevents partially
   applied patch sets from being mistaken for a reproducible source state.
+- Keep version-specific variants beside the original patch and select them in
+  `Script/apply-patches.sh` using an upstream API marker.
+- Preserve newer Ghostty's renamed internal-library outputs when extending its
+  Darwin static-library build path.
+- Every patch in this directory must be safe to re-run.
 - Patches here are applied automatically by `Script/build-ghostty.sh`, so they
   affect macOS, iOS, and Mac Catalyst builds equally.
 

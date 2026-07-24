@@ -51,7 +51,12 @@ echo "[+] verified clean ghostty source: $RESOLVED_HEAD"
 apply_unified_patch() {
     local patch_file="$1"
 
-    if command -v git >/dev/null 2>&1 && git -C "$SOURCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [ -d "$SOURCE_DIR/.git" ] && command -v git >/dev/null 2>&1; then
+        if git -C "$SOURCE_DIR" apply --check --reverse "$patch_file" >/dev/null 2>&1; then
+            echo "[+] patch already applied: $(basename "$patch_file")"
+            return
+        fi
+
         if ! git -C "$SOURCE_DIR" apply --check "$patch_file" >/dev/null 2>&1; then
             echo "[-] failed to validate patch: $patch_file"
             exit 1
@@ -76,10 +81,42 @@ apply_unified_patch() {
     echo "[+] applied patch: $(basename "$patch_file")"
 }
 
+# Ghostty's host-managed I/O surface gained a foreground-PID getter partway
+# through upstream's history. Older pinned refs need the original patch;
+# newer ones (including ours) already declare that symbol and need the
+# rebased "-modern" variant instead. Detecting this from the header keeps a
+# ref bump from silently applying the wrong hunk set.
+modern_host_io=false
+if grep -q "ghostty_surface_foreground_pid" "$SOURCE_DIR/include/ghostty.h"; then
+    modern_host_io=true
+fi
+
+host_io_applied=false
+if grep -q "GHOSTTY_SURFACE_IO_BACKEND_HOST_MANAGED" "$SOURCE_DIR/include/ghostty.h"; then
+    host_io_applied=true
+fi
+
 for patch_file in "$PATCH_DIR"/*; do
     [ -e "$patch_file" ] || continue
 
-    case "$patch_file" in
+    patch_name=$(basename "$patch_file")
+    case "$patch_name" in
+        0002-host-managed-io.patch)
+            [ "$modern_host_io" = false ] || continue
+            if [ "$host_io_applied" = true ]; then
+                echo "[+] patch already applied: $patch_name"
+                continue
+            fi
+            apply_unified_patch "$patch_file"
+            ;;
+        0002-host-managed-io-modern.patch)
+            [ "$modern_host_io" = true ] || continue
+            if [ "$host_io_applied" = true ]; then
+                echo "[+] patch already applied: $patch_name"
+                continue
+            fi
+            apply_unified_patch "$patch_file"
+            ;;
         *.md) ;;
         *.patch)
             apply_unified_patch "$patch_file"
