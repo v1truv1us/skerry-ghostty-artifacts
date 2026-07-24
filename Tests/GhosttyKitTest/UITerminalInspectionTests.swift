@@ -210,6 +210,26 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertEqual(terminal.terminalScrollGestureRecognizer.maximumNumberOfTouches, 1)
     }
 
+    /// Skerry re-polls tmux's `alternate_on` only on an explicit selection or
+    /// bell, so it must learn a scroll is starting to re-check screen mode
+    /// before Codex/Claude, launched in the pane already on screen, get
+    /// misrouted through the wheel-to-arrow-key fallback that reads as
+    /// prompt-history recall instead of scrollback. The hook must fire
+    /// exactly on `.began`, not on every gesture state.
+    func testScrollGestureBeginningNotifiesHostToRefreshScreenMode() {
+        let terminal = UITerminalView(frame: .zero)
+        var callCount = 0
+        terminal.scrollGestureWillBeginHandler = { callCount += 1 }
+
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .began))
+        XCTAssertEqual(callCount, 1)
+
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .changed))
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .ended))
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .cancelled))
+        XCTAssertEqual(callCount, 1)
+    }
+
     func testHostFontSetterDoesNotPublishButInteractiveChangeDoes() {
         let terminal = UITerminalView(frame: .zero)
         var published: [Float] = []

@@ -302,6 +302,7 @@
             switch gesture.state {
             case .began:
                 TerminalDebugLog.log(.input, "touch scroll began")
+                scrollGestureWillBeginHandler?()
                 stopMomentumScrolling()
                 hideSelectionHandles()
                 tmuxScrollRemainder = 0

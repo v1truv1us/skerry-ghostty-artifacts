@@ -162,6 +162,17 @@
         /// never inspect or receive terminal content.
         public var postRenderHandler: (() -> Void)?
 
+        /// Fired once, right as a one-finger drag begins — before this gesture's
+        /// terminal-vs-host routing decision is computed. Skerry only re-polls
+        /// tmux's `alternate_on` on an explicit window/pane selection or a
+        /// server bell, so launching Codex/Claude in the pane already on screen
+        /// triggers neither. Without this, `isUncapturedAlternateScreen` stays
+        /// stuck at its last snapshot and the drag keeps routing through
+        /// Ghostty's wheel-to-arrow-key fallback, which Codex/Claude read as
+        /// prompt-history recall instead of scrollback. Must never inspect or
+        /// receive terminal content.
+        public var scrollGestureWillBeginHandler: (() -> Void)?
+
         public var inputAccessoryActions: [TerminalInputAccessoryAction] = [] {
             didSet {
                 refreshInputAccessoryContent()
