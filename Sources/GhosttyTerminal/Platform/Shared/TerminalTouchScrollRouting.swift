@@ -1,7 +1,19 @@
 enum TerminalTouchScrollOwner {
     case undecided
     case terminal
-    case host
+    case localScrollback
+    case hostScrollback
+    /// The host could not prove current screen context. Ignore this gesture;
+    /// sending Ghostty wheel fallback into an ambiguous TUI can type Up/Down.
+    case unavailable
+}
+
+/// A content-free decision supplied by the host for one touch-scroll gesture.
+/// Mouse-capturing applications still bypass this and receive wheel input.
+public enum TerminalTouchScrollDestination: Equatable, Sendable {
+    case terminal
+    case localScrollback
+    case hostScrollback
 }
 
 enum TerminalTouchScrollRouting {
@@ -21,6 +33,6 @@ enum TerminalTouchScrollRouting {
               isUncapturedAlternateScreen,
               !isMouseCaptured
         else { return .terminal }
-        return .host
+        return .hostScrollback
     }
 }

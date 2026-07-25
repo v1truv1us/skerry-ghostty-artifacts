@@ -70,9 +70,12 @@
         #endif
         var hardwareKeyHandled = false
         let touchScrollMultiplier: CGFloat = 3.0
-        var tmuxScrollRemainder: CGFloat = 0
+        var touchScrollLineRemainder: CGFloat = 0
         var touchScrollOwner = TerminalTouchScrollOwner.terminal
         var bufferedTouchScroll = CGPoint.zero
+        var touchScrollContextTask: Task<Void, Never>?
+        var touchScrollGestureGeneration = 0
+        var pendingTouchScrollEndVelocity: CGPoint?
         var isTerminalSelectionActive = false
         var terminalSelectionModifiers = ghostty_input_mods_e(rawValue: 0)
         lazy var terminalEditMenuInteraction = UIEditMenuInteraction(delegate: self)
@@ -162,16 +165,13 @@
         /// never inspect or receive terminal content.
         public var postRenderHandler: (() -> Void)?
 
-        /// Fired once, right as a one-finger drag begins — before this gesture's
-        /// terminal-vs-host routing decision is computed. Skerry only re-polls
-        /// tmux's `alternate_on` on an explicit window/pane selection or a
-        /// server bell, so launching Codex/Claude in the pane already on screen
-        /// triggers neither. Without this, `isUncapturedAlternateScreen` stays
-        /// stuck at its last snapshot and the drag keeps routing through
-        /// Ghostty's wheel-to-arrow-key fallback, which Codex/Claude read as
-        /// prompt-history recall instead of scrollback. Must never inspect or
-        /// receive terminal content.
-        public var scrollGestureWillBeginHandler: (() -> Void)?
+        /// Resolves the content-free destination for this exact gesture.
+        /// UITerminalView buffers vertical movement while awaiting the result,
+        /// because a fire-and-forget refresh followed by a synchronous routing
+        /// decision necessarily reads stale state. Nil means the host could
+        /// not prove current context, so the gesture is discarded rather than
+        /// converted into cursor-key input.
+        public var touchScrollContextProvider: (@MainActor () async -> TerminalTouchScrollDestination?)?
 
         public var inputAccessoryActions: [TerminalInputAccessoryAction] = [] {
             didSet {

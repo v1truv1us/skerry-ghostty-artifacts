@@ -302,16 +302,38 @@
             switch gesture.state {
             case .began:
                 TerminalDebugLog.log(.input, "touch scroll began")
-                scrollGestureWillBeginHandler?()
+                touchScrollContextTask?.cancel()
+                touchScrollGestureGeneration += 1
                 stopMomentumScrolling()
                 hideSelectionHandles()
-                tmuxScrollRemainder = 0
+                touchScrollLineRemainder = 0
                 bufferedTouchScroll = .zero
-                touchScrollOwner = TerminalTouchScrollRouting.initialOwner(
-                    isMouseCaptured: surface?.isMouseCaptured == true,
-                    hasHostHandler: touchActionHandler != nil,
-                    isUncapturedAlternateScreen: isUncapturedAlternateScreen
-                )
+                pendingTouchScrollEndVelocity = nil
+
+                let isMouseCaptured = surface?.isMouseCaptured == true
+                if isMouseCaptured {
+                    touchScrollOwner = .terminal
+                } else if let touchScrollContextProvider {
+                    // The exact-client query is asynchronous. Keep the gesture
+                    // undecided and buffer movement until it returns; choosing
+                    // here would repeat build 6's stale-snapshot race.
+                    touchScrollOwner = .undecided
+                    let generation = touchScrollGestureGeneration
+                    touchScrollContextTask = Task { @MainActor [weak self] in
+                        let destination = await touchScrollContextProvider()
+                        guard !Task.isCancelled else { return }
+                        self?.resolveTouchScrollContext(
+                            destination,
+                            generation: generation
+                        )
+                    }
+                } else {
+                    touchScrollOwner = TerminalTouchScrollRouting.initialOwner(
+                        isMouseCaptured: false,
+                        hasHostHandler: touchActionHandler != nil,
+                        isUncapturedAlternateScreen: isUncapturedAlternateScreen
+                    )
+                }
 
             case .changed:
                 let translation = gesture.translation(in: self)
@@ -321,30 +343,38 @@
                     "touch scroll changed translation=\(String(format: "%.2f", translation.x))x\(String(format: "%.2f", translation.y))"
                 )
 
-                if touchScrollOwner == .terminal {
+                switch touchScrollOwner {
+                case .terminal:
                     sendTerminalScroll(translation)
-                } else if let touchActionHandler, abs(translation.y) >= abs(translation.x) {
-                    bufferedTouchScroll.x += translation.x
-                    bufferedTouchScroll.y += translation.y
-                    tmuxScrollRemainder += translation.y
-                    let rowCount = max(CGFloat(surface?.size()?.rows ?? 24), 1)
-                    let lineHeight = max(bounds.height / rowCount, 1)
-                    let lines = Int(tmuxScrollRemainder / lineHeight)
-                    if lines != 0 {
-                        if touchActionHandler(.verticalScroll(lines: lines)) {
-                            touchScrollOwner = .host
-                            tmuxScrollRemainder -= CGFloat(lines) * lineHeight
-                            bufferedTouchScroll = .zero
-                        } else {
-                            touchScrollOwner = .terminal
-                            sendTerminalScroll(bufferedTouchScroll)
-                            bufferedTouchScroll = .zero
-                            tmuxScrollRemainder = 0
-                        }
+
+                case .localScrollback:
+                    routeLocalScrollback(translation)
+
+                case .hostScrollback:
+                    routeHostScroll(translation)
+
+                case .undecided:
+                    // A horizontal swipe is app navigation, not scrollback;
+                    // it does not need a remote mode query. Preserve the
+                    // existing Ghostty horizontal event while the separate
+                    // window-swipe recognizer handles the completed gesture.
+                    if abs(translation.x) > abs(translation.y) {
+                        touchScrollContextTask?.cancel()
+                        touchScrollContextTask = nil
+                        touchScrollOwner = .terminal
+                        let buffered = bufferedTouchScroll
+                        bufferedTouchScroll = .zero
+                        sendTerminalScroll(CGPoint(
+                            x: buffered.x + translation.x,
+                            y: buffered.y + translation.y
+                        ))
+                    } else {
+                        bufferedTouchScroll.x += translation.x
+                        bufferedTouchScroll.y += translation.y
                     }
-                } else {
-                    touchScrollOwner = .terminal
-                    sendTerminalScroll(translation)
+
+                case .unavailable:
+                    break
                 }
 
             case .ended:
@@ -353,31 +383,150 @@
                     .input,
                     "touch scroll ended velocity=\(String(format: "%.2f", velocity.x))x\(String(format: "%.2f", velocity.y))"
                 )
-                if touchScrollOwner == .host, let touchActionHandler {
-                    let velocityLines = max(-12, min(12, Int(velocity.y / 320)))
-                    if velocityLines != 0 {
-                        if !touchActionHandler(.verticalScroll(lines: velocityLines)) {
-                            startMomentumScrolling(velocity: velocity)
-                        }
-                    }
-                } else {
-                    if touchScrollOwner == .undecided, bufferedTouchScroll != .zero {
-                        sendTerminalScroll(bufferedTouchScroll)
-                    }
-                    startMomentumScrolling(velocity: velocity)
+                if touchScrollOwner == .undecided {
+                    // Deliver the completed drag once the exact-client query
+                    // resolves. A new gesture or cancellation invalidates it.
+                    pendingTouchScrollEndVelocity = velocity
+                    return
                 }
-                tmuxScrollRemainder = 0
-                bufferedTouchScroll = .zero
+                finishTouchScroll(velocity: velocity)
+                resetTouchScrollGestureState()
 
             case .cancelled, .failed:
                 TerminalDebugLog.log(.input, "touch scroll cancelled")
+                touchScrollContextTask?.cancel()
+                touchScrollContextTask = nil
+                touchScrollGestureGeneration += 1
                 stopMomentumScrolling()
-                tmuxScrollRemainder = 0
-                bufferedTouchScroll = .zero
+                resetTouchScrollGestureState()
 
             default:
                 break
             }
+        }
+
+        private func resolveTouchScrollContext(
+            _ destination: TerminalTouchScrollDestination?,
+            generation: Int
+        ) {
+            guard generation == touchScrollGestureGeneration,
+                  touchScrollOwner == .undecided
+            else { return }
+            touchScrollContextTask = nil
+
+            let buffered = bufferedTouchScroll
+            bufferedTouchScroll = .zero
+            if surface?.isMouseCaptured == true {
+                // Mouse reporting can turn on while the remote query is in
+                // flight. The live surface wins: a mouse-aware TUI owns scroll.
+                touchScrollOwner = .terminal
+                sendTerminalScroll(buffered)
+            } else {
+                switch destination {
+                case .terminal:
+                    touchScrollOwner = .terminal
+                    sendTerminalScroll(buffered)
+                case .localScrollback:
+                    touchScrollOwner = .localScrollback
+                    routeLocalScrollback(buffered)
+                case .hostScrollback:
+                    touchScrollOwner = .hostScrollback
+                    routeHostScroll(buffered)
+                case nil:
+                    // Do not turn an unverified gesture into Up/Down input.
+                    touchScrollOwner = .unavailable
+                }
+            }
+
+            if let velocity = pendingTouchScrollEndVelocity {
+                pendingTouchScrollEndVelocity = nil
+                finishTouchScroll(velocity: velocity)
+                resetTouchScrollGestureState()
+            }
+        }
+
+        private func routeLocalScrollback(_ translation: CGPoint) {
+            guard abs(translation.y) >= abs(translation.x) else {
+                touchScrollOwner = .terminal
+                sendTerminalScroll(translation)
+                return
+            }
+
+            touchScrollLineRemainder += translation.y
+            let rowCount = max(CGFloat(surface?.size()?.rows ?? 24), 1)
+            let lineHeight = max(bounds.height / rowCount, 1)
+            let lines = Int(touchScrollLineRemainder / lineHeight)
+            guard lines != 0 else { return }
+            // The named Ghostty action moves its viewport without synthesizing
+            // wheel or cursor-key input. Positive finger travel reveals older
+            // output, while the action's negative count moves upward.
+            if surface?.performBindingAction("scroll_page_lines:\(-lines)") == true {
+                touchScrollLineRemainder -= CGFloat(lines) * lineHeight
+            } else {
+                touchScrollOwner = .unavailable
+                touchScrollLineRemainder = 0
+            }
+        }
+
+        private func routeHostScroll(_ translation: CGPoint) {
+            guard let touchActionHandler else {
+                touchScrollOwner = .unavailable
+                return
+            }
+            guard abs(translation.y) >= abs(translation.x) else {
+                touchScrollOwner = .terminal
+                sendTerminalScroll(translation)
+                return
+            }
+
+            touchScrollLineRemainder += translation.y
+            let rowCount = max(CGFloat(surface?.size()?.rows ?? 24), 1)
+            let lineHeight = max(bounds.height / rowCount, 1)
+            let lines = Int(touchScrollLineRemainder / lineHeight)
+            guard lines != 0 else { return }
+            if touchActionHandler(.verticalScroll(lines: lines)) {
+                touchScrollLineRemainder -= CGFloat(lines) * lineHeight
+            } else {
+                // The runtime changed underneath the verified query. Dropping
+                // the rest of the gesture is safer than typing cursor keys.
+                touchScrollOwner = .unavailable
+                touchScrollLineRemainder = 0
+            }
+        }
+
+        private func finishTouchScroll(velocity: CGPoint) {
+            switch touchScrollOwner {
+            case .localScrollback:
+                let velocityLines = max(-12, min(12, Int(velocity.y / 320)))
+                if velocityLines != 0,
+                   surface?.performBindingAction(
+                       "scroll_page_lines:\(-velocityLines)"
+                   ) != true
+                {
+                    touchScrollOwner = .unavailable
+                }
+
+            case .hostScrollback:
+                guard let touchActionHandler else { return }
+                let velocityLines = max(-12, min(12, Int(velocity.y / 320)))
+                if velocityLines != 0,
+                   !touchActionHandler(.verticalScroll(lines: velocityLines))
+                {
+                    touchScrollOwner = .unavailable
+                }
+
+            case .terminal:
+                startMomentumScrolling(velocity: velocity)
+
+            case .undecided, .unavailable:
+                break
+            }
+        }
+
+        private func resetTouchScrollGestureState() {
+            touchScrollLineRemainder = 0
+            bufferedTouchScroll = .zero
+            pendingTouchScrollEndVelocity = nil
         }
 
         private func sendTerminalScroll(_ translation: CGPoint) {

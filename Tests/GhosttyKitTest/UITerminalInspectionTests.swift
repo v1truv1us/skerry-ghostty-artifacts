@@ -210,24 +210,110 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertEqual(terminal.terminalScrollGestureRecognizer.maximumNumberOfTouches, 1)
     }
 
-    /// Skerry re-polls tmux's `alternate_on` only on an explicit selection or
-    /// bell, so it must learn a scroll is starting to re-check screen mode
-    /// before Codex/Claude, launched in the pane already on screen, get
-    /// misrouted through the wheel-to-arrow-key fallback that reads as
-    /// prompt-history recall instead of scrollback. The hook must fire
-    /// exactly on `.began`, not on every gesture state.
-    func testScrollGestureBeginningNotifiesHostToRefreshScreenMode() {
-        let terminal = UITerminalView(frame: .zero)
-        var callCount = 0
-        terminal.scrollGestureWillBeginHandler = { callCount += 1 }
+    /// Build 6 fired an asynchronous refresh and immediately routed from the
+    /// stale value, so the first Claude/Codex swipe still did nothing useful.
+    /// Movement must stay buffered until the exact-client result arrives and
+    /// then enter host history without emitting terminal wheel/cursor input.
+    func testFirstCodingAgentSwipeWaitsForFreshContextBeforeUsingHostHistory() async {
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let contextRequested = expectation(description: "context requested")
+        let scrollRouted = expectation(description: "scroll routed")
+        var providerCallCount = 0
+        var routedLines: [Int] = []
+        terminal.touchActionHandler = { action in
+            if case let .verticalScroll(lines) = action {
+                routedLines.append(lines)
+                scrollRouted.fulfill()
+            }
+            return true
+        }
+        terminal.touchScrollContextProvider = {
+            providerCallCount += 1
+            contextRequested.fulfill()
+            try? await Task.sleep(for: .milliseconds(30))
+            return .hostScrollback
+        }
 
         terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .began))
-        XCTAssertEqual(callCount, 1)
+        await fulfillment(of: [contextRequested], timeout: 1)
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(
+            state: .changed,
+            translation: CGPoint(x: 0, y: 48)
+        ))
+        XCTAssertEqual(routedLines, [], "movement must remain buffered while context is stale")
 
-        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .changed))
+        await fulfillment(of: [scrollRouted], timeout: 1)
+        XCTAssertEqual(providerCallCount, 1)
+        XCTAssertEqual(routedLines, [2])
         terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .ended))
-        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .cancelled))
-        XCTAssertEqual(callCount, 1)
+    }
+
+    /// Codex can keep its output on the primary screen. Sending wheel input
+    /// was ineffective in build 6, while tmux copy mode worked but trapped the
+    /// user in a second interaction mode. A verified primary-screen agent must
+    /// move Ghostty's own viewport directly and emit neither PTY nor host input.
+    func testPrimaryScreenCodingAgentSwipeUsesLocalScrollbackWithoutTmuxCopyMode() async throws {
+        let recorder = TerminalInputRecorder()
+        let session = InMemoryTerminalSession(
+            write: { recorder.append($0) },
+            resize: { _ in }
+        )
+        let state = TerminalViewState()
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        terminal.controller = state.controller
+        terminal.delegate = state
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        var hostActions: [TerminalTouchAction] = []
+        terminal.touchActionHandler = { action in
+            hostActions.append(action)
+            return true
+        }
+        terminal.touchScrollContextProvider = { .localScrollback }
+
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: terminal.bounds)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        await Task.yield()
+        await Task.yield()
+
+        let output = (0 ..< 100).map { "line-\($0)\r\n" }.joined()
+        session.receive(Data(output.utf8))
+        for _ in 0 ..< 100 {
+            if let position = state.scrollbarPosition,
+               position.total > position.length,
+               position.isAtBottom
+            {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let bottom = try XCTUnwrap(state.scrollbarPosition)
+        XCTAssertGreaterThan(bottom.total, bottom.length)
+        XCTAssertTrue(bottom.isAtBottom)
+
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .began))
+        await Task.yield()
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(
+            state: .changed,
+            translation: CGPoint(x: 0, y: 80)
+        ))
+        terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .ended))
+        for _ in 0 ..< 100 {
+            if let position = state.scrollbarPosition,
+               position.offset < bottom.offset
+            {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let scrolled = try XCTUnwrap(state.scrollbarPosition)
+        XCTAssertLessThan(scrolled.offset, bottom.offset)
+        XCTAssertTrue(hostActions.isEmpty)
+        XCTAssertEqual(recorder.data, Data())
     }
 
     func testHostFontSetterDoesNotPublishButInteractiveChangeDoes() {
@@ -323,9 +409,17 @@ private final class TerminalInputRecorder: @unchecked Sendable {
 
 private final class TestPanGestureRecognizer: UIPanGestureRecognizer {
     private let testState: UIGestureRecognizer.State
+    private let testTranslation: CGPoint
+    private let testVelocity: CGPoint
 
-    init(state: UIGestureRecognizer.State) {
+    init(
+        state: UIGestureRecognizer.State,
+        translation: CGPoint = .zero,
+        velocity: CGPoint = .zero
+    ) {
         testState = state
+        testTranslation = translation
+        testVelocity = velocity
         super.init(target: nil, action: nil)
     }
 
@@ -333,6 +427,10 @@ private final class TestPanGestureRecognizer: UIPanGestureRecognizer {
         get { testState }
         set { /* Test state is fixed at construction. */ }
     }
+
+    override func translation(in _: UIView?) -> CGPoint { testTranslation }
+    override func setTranslation(_: CGPoint, in _: UIView?) {}
+    override func velocity(in _: UIView?) -> CGPoint { testVelocity }
 }
 
 private final class TestLongPressGestureRecognizer: UILongPressGestureRecognizer {

@@ -17,7 +17,7 @@ struct TerminalTouchScrollRoutingTests {
             isMouseCaptured: false,
             hasHostHandler: true,
             isUncapturedAlternateScreen: true
-        ) == .host)
+        ) == .hostScrollback)
     }
 
     @Test
