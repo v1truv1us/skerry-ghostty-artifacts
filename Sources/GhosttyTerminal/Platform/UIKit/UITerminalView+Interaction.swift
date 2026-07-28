@@ -210,7 +210,7 @@
             // on Apple platforms. A direct touch has no hardware modifier, so it
             // must emulate Command for URL activation to be reachable on iPhone
             // and iPad. Non-link mouse events continue through Ghostty normally.
-            let mods = TerminalInputModifiers.linkActivation(
+            let mods = TerminalInputModifiers.singleTapClick(
                 isMouseCaptured: surface.isMouseCaptured
             ).ghosttyMods
             surface.sendMousePos(x: location.x, y: location.y, mods: mods)

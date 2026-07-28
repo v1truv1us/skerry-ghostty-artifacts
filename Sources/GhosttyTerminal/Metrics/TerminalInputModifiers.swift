@@ -31,17 +31,16 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
     public static let altRight = TerminalInputModifiers(rawValue: 1 << 8)
     public static let superRight = TerminalInputModifiers(rawValue: 1 << 9)
 
-    /// Modifiers for a synthesized (touch) click that should activate a
-    /// recognized link. Ghostty checks for a link under Command-click, but
-    /// when the remote program has captured the mouse (tmux, vim, or a
-    /// full-screen coding-agent CLI enabling mouse reporting for its own
-    /// scroll/click handling), a plain click is forwarded to that program
-    /// instead of being checked against the link table. Shift is the same
-    /// local-override signal already used to keep touch text selection
-    /// working under mouse capture, so it is added here too to reach the
-    /// same local, Ghostty-owned handling a link click needs.
-    public static func linkActivation(isMouseCaptured: Bool) -> TerminalInputModifiers {
-        isMouseCaptured ? [.super_, .shift] : .super_
+    /// Modifiers for a synthesized (touch) single-tap click. A touch has no
+    /// hardware modifier key, so an uncaptured tap emulates Command to reach
+    /// Ghostty's local link check — a plain tap has no other use when nothing
+    /// remote is reading the mouse. When the remote program has captured the
+    /// mouse (tmux, vim, or a full-screen coding-agent CLI enabling mouse
+    /// reporting for its own click handling), the tap is forwarded unmodified
+    /// instead, matching AppKit's real-modifier `mouseDown` parity, so the
+    /// remote program can position its own cursor from the click.
+    public static func singleTapClick(isMouseCaptured: Bool) -> TerminalInputModifiers {
+        isMouseCaptured ? [] : .super_
     }
 
     public var ghosttyMods: ghostty_input_mods_e {

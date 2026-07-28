@@ -1,24 +1,26 @@
 import XCTest
 @testable import GhosttyTerminal
 
-/// Regression coverage for the synthesized link-activation click: a touch
-/// tap has no hardware modifier key, so Skerry emulates Command to trigger
-/// Ghostty's link check. When the remote program has captured the mouse
-/// (tmux, vim, full-screen coding-agent CLIs), a plain click is forwarded to
-/// that program instead of being checked against the link table, so Shift —
-/// the same local-override signal already used for touch text selection
-/// under mouse capture — must be added to reach Ghostty's own handling.
+/// Regression coverage for the synthesized single-tap click: a touch tap has
+/// no hardware modifier key, so an uncaptured tap emulates Command to trigger
+/// Ghostty's link check — a plain tap has no other use there. When the remote
+/// program has captured the mouse (tmux, vim, full-screen coding-agent CLIs),
+/// the tap must forward unmodified so the remote program can position its own
+/// cursor from the click, matching AppKit's real-modifier mouseDown parity.
+/// A prior version always added Command (plus Shift when captured), which
+/// made click-to-position-cursor unreachable in any mouse-aware remote TUI.
 final class TerminalInputModifiersTests: XCTestCase {
-    func testLinkActivationAddsSuperOnlyWhenMouseIsNotCaptured() {
+    func testSingleTapClickEmulatesCommandWhenMouseIsNotCaptured() {
         XCTAssertEqual(
-            TerminalInputModifiers.linkActivation(isMouseCaptured: false),
+            TerminalInputModifiers.singleTapClick(isMouseCaptured: false),
             .super_
         )
     }
 
-    func testLinkActivationAddsShiftToBypassCaptureWhenMouseIsCaptured() {
-        let mods = TerminalInputModifiers.linkActivation(isMouseCaptured: true)
-        XCTAssertTrue(mods.contains(.super_))
-        XCTAssertTrue(mods.contains(.shift))
+    func testSingleTapClickForwardsPlainClickWhenMouseIsCaptured() {
+        XCTAssertEqual(
+            TerminalInputModifiers.singleTapClick(isMouseCaptured: true),
+            []
+        )
     }
 }
