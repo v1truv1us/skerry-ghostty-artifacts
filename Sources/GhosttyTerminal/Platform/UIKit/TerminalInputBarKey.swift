@@ -9,6 +9,9 @@
         case interrupt
         case tab
         case end
+        case home
+        case pageUp
+        case pageDown
         case arrowLeft
         case arrowUp
         case arrowDown

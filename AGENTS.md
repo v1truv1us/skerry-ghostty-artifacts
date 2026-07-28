@@ -85,7 +85,7 @@ All example apps run in App Sandbox. Use `GHOSTTY_SURFACE_IO_BACKEND_HOST_MANAGE
 
 1. **Hardware keys** → `pressesBegan`/`pressesEnded` in `+Keyboard.swift` → builds `ghostty_input_key_s` → `surface.sendKeyEvent()`. Sets `hardwareKeyHandled = true` to suppress the duplicate `insertText`/`deleteBackward` that UIKit would otherwise deliver.
 2. **Software keyboard** → UIKit calls `insertText(_:)` / `deleteBackward()` via UIKeyInput. Guarded by `hardwareKeyHandled` flag to avoid double-processing hardware key presses.
-3. **Input accessory bar** (iOS only, excludes Catalyst) → `TerminalInputAccessoryView` provides a toolbar above the software keyboard with Esc, Tab, arrow keys, modifier keys (Ctrl/Alt/Cmd), symbol keys, and Paste. Modifier keys support **sticky states**: tap to arm (consumed after next key), double-tap to lock (persists until toggled off). Sticky modifier state is tracked by `TerminalStickyModifierState`. Actions are dispatched via `UITerminalView+InputAccessory.swift`. Button colors are configurable via `TerminalInputAccessoryStyle` (regular/active background and foreground), exposed as `UITerminalView.inputAccessoryStyle`.
+3. **Input accessory bar** (iOS only, excludes Catalyst) → `TerminalInputAccessoryView` provides a two-row toolbar above the software keyboard. The row nearest the keyboard holds the navigation cluster (Home, Page Up, arrows, Page Down, End, in that bracketed order) followed by the host app's custom actions; the row farthest from the keyboard holds Interrupt, Escape, modifier keys (Ctrl/Alt/Cmd), Tab, symbol keys, and Paste. This split and ordering exist so the most-reached-for keys need the least scrolling — reordering it back to a single row or moving navigation off the near row reintroduces that reachability problem. Modifier keys support **sticky states**: tap to arm (consumed after next key), double-tap to lock (persists until toggled off). Sticky modifier state is tracked by `TerminalStickyModifierState`. Actions are dispatched via `UITerminalView+InputAccessory.swift`. Button colors are configurable via `TerminalInputAccessoryStyle` (regular/active background and foreground), exposed as `UITerminalView.inputAccessoryStyle`.
 4. **IME / marked text** → `setMarkedText` / `unmarkText` delegate to `TerminalTextInputHandler`, which calls `surface.preedit()` for inline composition preview. Committed text goes through `insertText`. Sticky modifiers are respected during IME composition.
 5. **Text positioning** → `TerminalTextPosition` / `TerminalTextRange` (UITextPosition/UITextRange subclasses) provide minimal cursor geometry. `caretRect`/`firstRect` use `surface.imePoint()` for IME candidate window placement.
 
@@ -97,9 +97,10 @@ Files in `Platform/UIKit/`:
 - `UITerminalView+InputAccessory.swift` — input accessory bar integration, key actions, sticky modifier dispatch
 - `UITerminalView+Interaction.swift` — touch scrolling, momentum scroll via CADisplayLink, Catalyst pointer/mouse
 - `UITerminalView+Lifecycle.swift` — display scale, sublayer frames, focus, color scheme
-- `TerminalInputAccessoryView.swift` — input accessory bar UIView (blur background, scrollable button layout)
+- `TerminalInputAccessoryView.swift` — input accessory bar UIView (blur background, two independently-scrollable button rows)
+- `TerminalAccessoryButton.swift` — the accessory bar's individual button control (regular/modifier styling, sticky lock indicator)
 - `TerminalInputAccessoryStyle.swift` — configurable button colors for the accessory bar (regular/active background and foreground)
-- `TerminalInputBarKey.swift` — enum defining accessory bar key types (esc, tab, arrows, symbols, paste)
+- `TerminalInputBarKey.swift` — enum defining accessory bar key types (esc, tab, arrows, home, page up/down, end, symbols, paste)
 - `TerminalStickyModifierState.swift` — modifier key state machine (inactive/armed/locked, double-tap locking)
 - `TerminalTextInputHandler@UIKit.swift` — IME state machine (marked text, preedit bridge, sticky modifier support)
 - `TerminalTextPosition.swift` — TerminalTextPosition / TerminalTextRange subclasses

@@ -44,6 +44,18 @@
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x4D, additionalMods: mods)
 
+            case .home:
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(usage: 0x4A, additionalMods: mods)
+
+            case .pageUp:
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(usage: 0x4B, additionalMods: mods)
+
+            case .pageDown:
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(usage: 0x4E, additionalMods: mods)
+
             case .arrowLeft:
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x50, additionalMods: mods)

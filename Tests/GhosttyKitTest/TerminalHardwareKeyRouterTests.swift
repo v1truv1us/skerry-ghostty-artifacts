@@ -46,6 +46,24 @@ struct TerminalHardwareKeyRouterTests {
                 backend: .inMemory(session)
             ) == .data(Data("\u{1B}[F".utf8))
         )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x4A,
+                backend: .inMemory(session)
+            ) == .data(Data("\u{1B}[H".utf8))
+        )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x4B,
+                backend: .inMemory(session)
+            ) == .data(Data("\u{1B}[5~".utf8))
+        )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x4E,
+                backend: .inMemory(session)
+            ) == .data(Data("\u{1B}[6~".utf8))
+        )
     }
 
     @Test

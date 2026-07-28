@@ -14,14 +14,26 @@
             didSet { refreshContent() }
         }
 
-        private let barHeight: CGFloat = 60
+        // Read via `Self.` before `super.init()` runs (the frame height
+        // argument), so these must stay static rather than instance state.
+        private static let rowHeight: CGFloat = 60
+        private static let interRowSpacing: CGFloat = 6
+        private static var barHeight: CGFloat { rowHeight * 2 + interRowSpacing }
         private let buttonSize: CGFloat = 44
 
         private lazy var blurView = UIVisualEffectView(
             effect: makeBarEffect()
         )
-        private let scrollView = UIScrollView()
-        private let stackView = UIStackView()
+        private let rowsStackView = UIStackView()
+        // Row nearest the keyboard: navigation cluster + Skerry's custom
+        // actions. This is the most-reached-for row, so it sits where thumb
+        // travel from the keyboard is shortest.
+        private let navScrollView = UIScrollView()
+        private let navStackView = UIStackView()
+        // Row farthest from the keyboard: modifiers, Esc, Tab, Interrupt,
+        // Paste — used less often than navigation, per owner confirmation.
+        private let commandScrollView = UIScrollView()
+        private let commandStackView = UIStackView()
         private var blurLeadingConstraint: NSLayoutConstraint?
         private var blurTrailingConstraint: NSLayoutConstraint?
         private var blurTopConstraint: NSLayoutConstraint?
@@ -57,9 +69,23 @@
             systemImage: "arrow.right.to.line",
             key: .tab
         )
+        private lazy var homeButton = makeKeyButton(
+            title: "Home",
+            key: .home
+        )
+        private lazy var pageUpButton = makeKeyButton(
+            title: "PgUp",
+            accessibilityLabel: "Page Up",
+            key: .pageUp
+        )
         private lazy var endButton = makeKeyButton(
             title: "End",
             key: .end
+        )
+        private lazy var pageDownButton = makeKeyButton(
+            title: "PgDn",
+            accessibilityLabel: "Page Down",
+            key: .pageDown
         )
         private lazy var leftButton = makeKeyButton(
             title: "Left",
@@ -115,7 +141,7 @@
                     x: 0,
                     y: 0,
                     width: 0,
-                    height: Self.preferredHeight(for: barHeight)
+                    height: Self.preferredHeight(for: Self.barHeight)
                 )
             )
             autoresizingMask = .flexibleWidth
@@ -170,7 +196,10 @@
             interruptButton.applyRegularStyle(style)
             escapeButton.applyRegularStyle(style)
             tabButton.applyRegularStyle(style)
+            homeButton.applyRegularStyle(style)
+            pageUpButton.applyRegularStyle(style)
             endButton.applyRegularStyle(style)
+            pageDownButton.applyRegularStyle(style)
             leftButton.applyRegularStyle(style)
             upButton.applyRegularStyle(style)
             downButton.applyRegularStyle(style)
@@ -213,15 +242,14 @@
                 trailing,
                 top,
                 bottom,
-                blurView.heightAnchor.constraint(equalToConstant: barHeight),
+                blurView.heightAnchor.constraint(equalToConstant: Self.barHeight),
             ])
 
-            scrollView.translatesAutoresizingMaskIntoConstraints = false
-            scrollView.showsHorizontalScrollIndicator = false
-            scrollView.showsVerticalScrollIndicator = false
-            scrollView.alwaysBounceHorizontal = true
-            scrollView.clipsToBounds = true
-            blurView.contentView.addSubview(scrollView)
+            rowsStackView.translatesAutoresizingMaskIntoConstraints = false
+            rowsStackView.axis = .vertical
+            rowsStackView.spacing = Self.interRowSpacing
+            rowsStackView.distribution = .fillEqually
+            blurView.contentView.addSubview(rowsStackView)
 
             blurView.contentView.addSubview(hideKeyboardButton)
             NSLayoutConstraint.activate([
@@ -230,11 +258,60 @@
             ])
 
             NSLayoutConstraint.activate([
-                scrollView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor),
-                scrollView.trailingAnchor.constraint(equalTo: hideKeyboardButton.leadingAnchor, constant: -8),
-                scrollView.topAnchor.constraint(equalTo: blurView.contentView.topAnchor),
-                scrollView.bottomAnchor.constraint(equalTo: blurView.contentView.bottomAnchor),
+                rowsStackView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor),
+                rowsStackView.trailingAnchor.constraint(equalTo: hideKeyboardButton.leadingAnchor, constant: -8),
+                rowsStackView.topAnchor.constraint(equalTo: blurView.contentView.topAnchor),
+                rowsStackView.bottomAnchor.constraint(equalTo: blurView.contentView.bottomAnchor),
             ])
+
+            // Command row on top, nav row on bottom: subview order in a
+            // vertical stack also drives default VoiceOver traversal, so
+            // VoiceOver reaches the command row first — the reverse of touch
+            // priority. Accepted trade-off; nav still wins the no-scroll
+            // zone nearest the keyboard for touch, which is what was asked
+            // for.
+            setupRow(scrollView: commandScrollView, stackView: commandStackView, in: rowsStackView)
+            setupRow(scrollView: navScrollView, stackView: navStackView, in: rowsStackView)
+
+            addArrangedViews([
+                interruptButton,
+                escapeButton,
+                ctrlButton,
+                altButton,
+                cmdButton,
+                makeDivider(),
+                tabButton,
+            ] + symbolButtons + [
+                pasteButton,
+            ], to: commandStackView)
+
+            // Navigation cluster first (Home/PgUp bracket the arrows,
+            // PgDn/End bracket the other side — mirrors a physical extended
+            // keyboard's nav block), custom actions after. The nav cluster
+            // alone is wider than the visible bar at rest; this ordering
+            // keeps Home/PgUp/the arrows scroll-free since they're reached
+            // for repeatedly while editing, at the cost of custom actions
+            // (usually a single tap) needing a short scroll.
+            addArrangedViews([
+                homeButton,
+                pageUpButton,
+                leftButton,
+                upButton,
+                downButton,
+                rightButton,
+                pageDownButton,
+                endButton,
+                customActionDivider,
+            ], to: navStackView)
+        }
+
+        private func setupRow(scrollView: UIScrollView, stackView: UIStackView, in container: UIStackView) {
+            scrollView.translatesAutoresizingMaskIntoConstraints = false
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.alwaysBounceHorizontal = true
+            scrollView.clipsToBounds = true
+            container.addArrangedSubview(scrollView)
 
             stackView.translatesAutoresizingMaskIntoConstraints = false
             stackView.axis = .horizontal
@@ -249,30 +326,11 @@
                 stackView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
                 stackView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
             ])
-
-            addArrangedViews([
-                customActionDivider,
-                interruptButton,
-                escapeButton,
-                ctrlButton,
-                altButton,
-                cmdButton,
-                makeDivider(),
-                tabButton,
-                endButton,
-                leftButton,
-                upButton,
-                downButton,
-                rightButton,
-                makeDivider(),
-            ] + symbolButtons + [
-                pasteButton,
-            ])
         }
 
         private func refreshCustomActionButtons() {
             for button in customActionButtons {
-                stackView.removeArrangedSubview(button)
+                navStackView.removeArrangedSubview(button)
                 button.removeFromSuperview()
             }
 
@@ -289,12 +347,14 @@
                 return button
             }
             customActionDivider.isHidden = customActionButtons.isEmpty
-            for button in customActionButtons.reversed() {
-                stackView.insertArrangedSubview(button, at: 0)
+            // Appended after the nav cluster (not inserted at index 0) —
+            // see the ordering rationale in setupViews().
+            for button in customActionButtons {
+                navStackView.addArrangedSubview(button)
             }
         }
 
-        private func addArrangedViews(_ views: [UIView]) {
+        private func addArrangedViews(_ views: [UIView], to stackView: UIStackView) {
             views.forEach { stackView.addArrangedSubview($0) }
         }
 
@@ -326,12 +386,13 @@
         private func makeKeyButton(
             title: String,
             systemImage: String? = nil,
+            accessibilityLabel: String? = nil,
             key: TerminalInputBarKey
         ) -> AccessoryButton {
             let button = AccessoryButton(size: buttonSize) { [weak self] in
                 self?.eligibleTerminalView?.handleInputBarKey(key)
             }
-            button.accessibilityLabel = title
+            button.accessibilityLabel = accessibilityLabel ?? title
 
             if let systemImage {
                 button.setImage(UIImage(systemName: systemImage), for: .normal)
@@ -353,7 +414,7 @@
         }
 
         private var preferredHeight: CGFloat {
-            Self.preferredHeight(for: barHeight)
+            Self.preferredHeight(for: Self.barHeight)
         }
 
         private var currentOuterPadding: UIEdgeInsets {
@@ -384,7 +445,10 @@
             blurView.effect = makeBarEffect()
             blurView.layer.cornerCurve = .continuous
             blurView.layer.cornerRadius = if #available(iOS 26, *) {
-                barHeight / 2
+                // Cap at a single row's radius rather than half the new
+                // two-row height, so the taller bar keeps the same pill
+                // curvature as before instead of ballooning it.
+                min(Self.barHeight / 2, Self.rowHeight / 2)
             } else {
                 0
             }
@@ -409,86 +473,5 @@
         }
 
         private static let symbols: [String] = []
-    }
-
-    private final class AccessoryButton: UIButton {
-        private let size: CGFloat
-        private let handler: () -> Void
-        private let lockIndicator = UIView()
-        private let selectionFeedback = UISelectionFeedbackGenerator()
-
-        init(size: CGFloat, handler: @escaping () -> Void) {
-            self.size = size
-            self.handler = handler
-            super.init(frame: .zero)
-
-            translatesAutoresizingMaskIntoConstraints = false
-            layer.cornerRadius = size / 2
-            layer.cornerCurve = .continuous
-            clipsToBounds = true
-
-            tintColor = .label
-            backgroundColor = UIColor.systemGray5.withAlphaComponent(0.92)
-
-            titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
-            imageView?.contentMode = .scaleAspectFit
-
-            NSLayoutConstraint.activate([
-                widthAnchor.constraint(equalToConstant: size),
-                heightAnchor.constraint(equalToConstant: size),
-            ])
-
-            lockIndicator.translatesAutoresizingMaskIntoConstraints = false
-            lockIndicator.backgroundColor = tintColor
-            lockIndicator.layer.cornerRadius = 1.5
-            lockIndicator.isHidden = true
-            addSubview(lockIndicator)
-
-            NSLayoutConstraint.activate([
-                lockIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
-                lockIndicator.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
-                lockIndicator.widthAnchor.constraint(equalToConstant: 14),
-                lockIndicator.heightAnchor.constraint(equalToConstant: 3),
-            ])
-
-            addAction(UIAction { [weak self] _ in
-                self?.selectionFeedback.selectionChanged()
-                self?.handler()
-            }, for: .touchUpInside)
-            addAction(UIAction { [weak self] _ in
-                self?.selectionFeedback.prepare()
-            }, for: .touchDown)
-        }
-
-        @available(*, unavailable)
-        required init?(coder _: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-
-        func applyRegularStyle(_ style: TerminalInputAccessoryStyle) {
-            isEnabled = true
-            alpha = 1
-            tintColor = style.regularForeground
-            backgroundColor = style.regularBackground
-            lockIndicator.isHidden = true
-            lockIndicator.backgroundColor = tintColor
-            configuration?.baseForegroundColor = tintColor
-        }
-
-        func applyModifierStyle(
-            _ activation: TerminalStickyModifierState.Activation,
-            isDisabled: Bool,
-            style: TerminalInputAccessoryStyle
-        ) {
-            isEnabled = !isDisabled
-            alpha = isDisabled && activation == .inactive ? 0.45 : 1
-
-            let isActive = activation != .inactive
-            tintColor = isActive ? style.activeForeground : style.regularForeground
-            backgroundColor = isActive ? style.activeBackground : style.regularBackground
-            lockIndicator.isHidden = activation != .locked
-            lockIndicator.backgroundColor = tintColor
-            configuration?.baseForegroundColor = tintColor
-        }
     }
 #endif
