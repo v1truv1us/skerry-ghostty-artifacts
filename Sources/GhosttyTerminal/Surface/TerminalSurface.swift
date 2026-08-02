@@ -8,6 +8,11 @@
 import Foundation
 import GhosttyKit
 
+struct TerminalSelectionRange: Equatable {
+    let leading: CGPoint?
+    let trailing: CGPoint?
+}
+
 /// Thread-safe wrapper around `ghostty_surface_t`.
 ///
 /// All access must happen on the main actor. The surface should be freed
@@ -184,6 +189,30 @@ public final class TerminalSurface {
     var isMouseCaptured: Bool {
         guard let s = surface else { return false }
         return ghostty_surface_mouse_captured(s)
+    }
+
+    /// Reads geometry only. Ghostty owns the conversion from its selected
+    /// cells to UIKit-compatible surface points so padding, scale, viewport,
+    /// and selection movement are captured atomically without exposing text.
+    func selectionRange() -> TerminalSelectionRange? {
+        guard let s = surface else { return nil }
+        var range = ghostty_selection_range_s(
+            leading_x: 0,
+            leading_y: 0,
+            trailing_x: 0,
+            trailing_y: 0,
+            leading_visible: false,
+            trailing_visible: false
+        )
+        guard ghostty_surface_selection_range(s, &range) else { return nil }
+        return TerminalSelectionRange(
+            leading: range.leading_visible
+                ? CGPoint(x: range.leading_x, y: range.leading_y)
+                : nil,
+            trailing: range.trailing_visible
+                ? CGPoint(x: range.trailing_x, y: range.trailing_y)
+                : nil
+        )
     }
 
     // MARK: - Lifecycle

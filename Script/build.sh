@@ -165,6 +165,9 @@ mv "$STAGED_XCFRAMEWORK_PATH" "$XCFRAMEWORK_PATH"
 mv "$STAGED_XCFRAMEWORK_ZIP" "$XCFRAMEWORK_ZIP"
 rm -rf "$STAGING_ROOT"
 
+./Script/check-selection-range-api.sh "$XCFRAMEWORK_PATH"
+./Script/check-no-libintl.sh "$XCFRAMEWORK_PATH"
+
 BUILD_INFO="$ROOT_DIR/build/BUILD_INFO.txt"
 ARTIFACT_SHA256=$(shasum -a 256 "$XCFRAMEWORK_ZIP" | cut -d ' ' -f 1)
 SWIFTPM_CHECKSUM=$(swift package compute-checksum "$XCFRAMEWORK_ZIP")
@@ -182,13 +185,14 @@ SWIFTPM_CHECKSUM=$(swift package compute-checksum "$XCFRAMEWORK_ZIP")
     echo "artifact=build/GhosttyKit.xcframework.zip"
     echo "artifact_sha256=$ARTIFACT_SHA256"
     echo "artifact_swiftpm_checksum=$SWIFTPM_CHECKSUM"
+    echo "ghostty_i18n=false"
     echo "patches:"
     for patch_file in "$ROOT_DIR"/Patches/ghostty/*; do
         [ -f "$patch_file" ] || continue
         [ "${patch_file##*.}" = "md" ] && continue
         echo "  $(basename "$patch_file") $(shasum -a 256 "$patch_file" | cut -d ' ' -f 1)"
     done
-    echo "licensing=Ghostty source and linked dependencies retain their upstream licenses; review redistribution obligations before publishing the binary."
+    echo "licensing=Ghostty source and linked dependencies retain their upstream licenses; Ghostty i18n is disabled and libintl absence is audited before publication."
 } > "$BUILD_INFO"
 
 if [ -n "$DOWNLOAD_URL" ]; then
@@ -196,8 +200,7 @@ if [ -n "$DOWNLOAD_URL" ]; then
 fi
 
 if [ "$SKIP_TESTS" -eq 0 ]; then
-    ./Script/test.sh
-    swift test
+    ./Script/test-local-artifact.sh
 fi
 
 echo "[*] xcframework: $XCFRAMEWORK_PATH"

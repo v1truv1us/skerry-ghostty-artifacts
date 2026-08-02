@@ -95,8 +95,8 @@ case "$PLATFORM_GROUP" in
         ;;
     maccatalyst)
         build_variant "maccatalyst" \
-            "aarch64-ios-macabi@apple_a17" \
-            "x86_64-ios-macabi"
+            "aarch64-maccatalyst-none@apple_a17" \
+            "x86_64-maccatalyst-none"
         ;;
     tvos)
         build_variant "appletvos" \

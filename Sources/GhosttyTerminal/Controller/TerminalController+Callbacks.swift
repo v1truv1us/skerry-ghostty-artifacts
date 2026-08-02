@@ -41,7 +41,10 @@ private enum TerminalCallbacks {
             bridge.handleAction(action)
         }
 
-        return false
+        // URL opening is deliberately host-owned so Ghostty cannot fall back
+        // to a platform opener that bypasses the app's credential/scheme
+        // policy. Other actions retain their existing fallback semantics.
+        return terminalControllerHandlesAction(action.tag)
     }
 
     static func closeSurface(
@@ -102,6 +105,10 @@ private enum TerminalCallbacks {
         }
         return true
     }
+}
+
+func terminalControllerHandlesAction(_ tag: ghostty_action_tag_e) -> Bool {
+    tag == GHOSTTY_ACTION_OPEN_URL
 }
 
 func terminalControllerWakeupCallback(userdata: UnsafeMutableRawPointer?) {

@@ -42,29 +42,27 @@ diff --git a/src/Surface.zig b/src/Surface.zig
 index 2c4edc497..b35c4465e 100644
 --- a/src/Surface.zig
 +++ b/src/Surface.zig
-@@ -628,40 +628,48 @@ pub fn init(
+@@ -628,39 +628,47 @@ pub fn init(
      // This separate block ({}) is important because our errdefers must
      // be scoped here to be valid.
      {
 -        var env = rt_surface.defaultTermioEnv() catch |err| env: {
 -            // If an error occurs, we don't want to block surface startup.
 -            log.warn("error getting env map for surface err={}", .{err});
--            break :env internal_os.getEnvMap(alloc) catch
--                std.process.EnvMap.init(alloc);
+-            break :env global.environMap() catch std.process.Environ.Map.init(alloc);
 -        };
 -        errdefer env.deinit();
 +        const backend: termio.Backend = switch (rt_surface.termioBackend()) {
 +            .exec => backend: {
 +                var env = rt_surface.defaultTermioEnv() catch |err| env: {
 +                    log.warn("error getting env map for surface err={}", .{err});
-+                    break :env internal_os.getEnvMap(alloc) catch
-+                        std.process.EnvMap.init(alloc);
++                    break :env global.environMap() catch std.process.Environ.Map.init(alloc);
 +                };
 +                errdefer env.deinit();
  
 -        // don't leak GHOSTTY_LOG to any subprocesses
--        env.remove("GHOSTTY_LOG");
-+                env.remove("GHOSTTY_LOG");
+-        _ = env.orderedRemove("GHOSTTY_LOG");
++                _ = env.orderedRemove("GHOSTTY_LOG");
  
 -        var buf: [18]u8 = undefined;
 -        try env.put(
@@ -86,7 +84,7 @@ index 2c4edc497..b35c4465e 100644
 -            .shell_integration_features = config.@"shell-integration-features",
 -            .cursor_blink = config.@"cursor-style-blink",
 -            .working_directory = if (config.@"working-directory") |wd| wd.value() else null,
--            .resources_dir = global_state.resources_dir.host(),
+-            .resources_dir = global.resourcesDir().host(),
 -            .term = config.term,
 -            .rt_pre_exec_info = .init(config),
 -            .rt_post_fork_info = .init(config),
@@ -100,7 +98,7 @@ index 2c4edc497..b35c4465e 100644
 +                    .shell_integration_features = config.@"shell-integration-features",
 +                    .cursor_blink = config.@"cursor-style-blink",
 +                    .working_directory = if (config.@"working-directory") |wd| wd.value() else null,
-+                    .resources_dir = global_state.resources_dir.host(),
++                    .resources_dir = global.resourcesDir().host(),
 +                    .term = config.term,
 +                    .rt_pre_exec_info = .init(config),
 +                    .rt_post_fork_info = .init(config),
@@ -130,7 +128,7 @@ index 2c4edc497..b35c4465e 100644
              .mailbox = io_mailbox,
              .renderer_state = &self.renderer_state,
              .renderer_wakeup = render_thread.wakeup,
-@@ -1311,9 +1319,11 @@ fn childExitedAbnormally(
+@@ -1319,9 +1327,10 @@ fn childExitedAbnormally(
      const alloc = arena.allocator();
  
      // Build up our command for the error message
@@ -141,10 +139,9 @@ index 2c4edc497..b35c4465e 100644
 +        .exec => |*exec| try std.mem.join(alloc, " ", exec.subprocess.args),
 +        .host_managed => try alloc.dupe(u8, "host-managed session"),
 +    };
-+    defer alloc.free(command);
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
-     self.renderer_state.mutex.lock();
+     self.renderer_state.mutex.lockUncancelable(global.io());
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
 index 7310159cc..0180884fc 100644
 --- a/src/apprt/embedded.zig

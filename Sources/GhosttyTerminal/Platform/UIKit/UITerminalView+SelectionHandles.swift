@@ -17,24 +17,28 @@
             }
         }
 
-        /// `start`/`end` are the same view-space points already sent to
-        /// Ghostty via `sendMousePos` — not read back from it.
-        func showSelectionHandles(start: CGPoint, end: CGPoint) {
-            selectionStartPoint = start
-            selectionEndPoint = end
+        @discardableResult
+        func synchronizeSelectionHandlesWithSurface() -> Bool {
+            guard ownsTerminalSelectionRange else { return false }
+            guard let range = surface?.selectionRange() else {
+                hideSelectionHandles()
+                return false
+            }
 
-            if startSelectionHandle.superview == nil { addSubview(startSelectionHandle) }
-            if endSelectionHandle.superview == nil { addSubview(endSelectionHandle) }
-            positionSelectionHandle(startSelectionHandle, at: start)
-            positionSelectionHandle(endSelectionHandle, at: end)
+            selectionStartPoint = range.leading
+            selectionEndPoint = range.trailing
+            synchronizeSelectionHandle(startSelectionHandle, with: range.leading)
+            synchronizeSelectionHandle(endSelectionHandle, with: range.trailing)
+            return range.leading != nil || range.trailing != nil
         }
 
         func hideSelectionHandles() {
+            ownsTerminalSelectionRange = false
             startSelectionHandle.removeFromSuperview()
             endSelectionHandle.removeFromSuperview()
             selectionStartPoint = nil
             selectionEndPoint = nil
-            selectionHandleDragOrigin = nil
+            selectionHandleDragTouchOffset = nil
         }
 
         func presentSelectionEditMenu(at point: CGPoint) {
@@ -44,13 +48,16 @@
             ))
         }
 
-        private func positionSelectionHandle(_ handle: TerminalSelectionHandleView, at point: CGPoint) {
-            handle.frame = CGRect(
-                x: point.x - TerminalSelectionHandleView.size.width / 2,
-                y: point.y,
-                width: TerminalSelectionHandleView.size.width,
-                height: TerminalSelectionHandleView.size.height
-            )
+        private func synchronizeSelectionHandle(
+            _ handle: TerminalSelectionHandleView,
+            with point: CGPoint?
+        ) {
+            guard let point else {
+                handle.removeFromSuperview()
+                return
+            }
+            if handle.superview == nil { addSubview(handle) }
+            handle.frame = handle.frameAnchored(at: point)
         }
 
         /// Dragging a handle re-anchors the selection at the *other* end (a
@@ -65,31 +72,49 @@
 
             switch gesture.state {
             case .began:
-                guard let anchor = edge == .start ? selectionEndPoint : selectionStartPoint
+                guard let anchor = edge == .start ? selectionEndPoint : selectionStartPoint,
+                      let movingPoint = edge == .start ? selectionStartPoint : selectionEndPoint
                 else { return }
                 terminalSelectionModifiers = surface.isMouseCaptured
                     ? TerminalInputModifiers.shift.ghosttyMods
                     : ghostty_input_mods_e(rawValue: 0)
-                surface.sendMousePos(x: anchor.x, y: anchor.y, mods: terminalSelectionModifiers)
+                // Handles sit on the outside corners of the selected cells.
+                // Move half a point inward before re-anchoring so Ghostty
+                // cannot floor an exact trailing boundary into the next cell.
+                let interiorAnchor = CGPoint(
+                    x: anchor.x + (edge == .start ? -0.5 : 0.5),
+                    y: anchor.y + (edge == .start ? -0.5 : 0.5)
+                )
+                let touch = gesture.location(in: self)
+                selectionHandleDragTouchOffset = CGPoint(
+                    x: movingPoint.x - touch.x,
+                    y: movingPoint.y - touch.y
+                )
+                surface.sendMousePos(
+                    x: interiorAnchor.x,
+                    y: interiorAnchor.y,
+                    mods: terminalSelectionModifiers
+                )
                 surface.sendMouseButton(
                     state: GHOSTTY_MOUSE_PRESS,
                     button: GHOSTTY_MOUSE_LEFT,
                     mods: terminalSelectionModifiers
                 )
-                selectionHandleDragOrigin = edge == .start ? selectionStartPoint : selectionEndPoint
 
             case .changed, .ended, .cancelled, .failed:
-                guard let origin = selectionHandleDragOrigin else { return }
-                let translation = gesture.translation(in: self)
-                let point = CGPoint(x: origin.x + translation.x, y: origin.y + translation.y)
-                surface.sendMousePos(x: point.x, y: point.y, mods: terminalSelectionModifiers)
-
-                if edge == .start {
-                    selectionStartPoint = point
-                } else {
-                    selectionEndPoint = point
-                }
-                positionSelectionHandle(edge == .start ? startSelectionHandle : endSelectionHandle, at: point)
+                guard let offset = selectionHandleDragTouchOffset else { return }
+                let touch = gesture.location(in: self)
+                let point = CGPoint(x: touch.x + offset.x, y: touch.y + offset.y)
+                let interiorPoint = CGPoint(
+                    x: point.x + (edge == .start ? 0.5 : -0.5),
+                    y: point.y + (edge == .start ? 0.5 : -0.5)
+                )
+                surface.sendMousePos(
+                    x: interiorPoint.x,
+                    y: interiorPoint.y,
+                    mods: terminalSelectionModifiers
+                )
+                synchronizeSelectionHandlesWithSurface()
 
                 guard gesture.state != .changed else { return }
                 surface.sendMouseButton(
@@ -97,8 +122,9 @@
                     button: GHOSTTY_MOUSE_LEFT,
                     mods: terminalSelectionModifiers
                 )
-                selectionHandleDragOrigin = nil
-                presentSelectionEditMenu(at: point)
+                selectionHandleDragTouchOffset = nil
+                synchronizeSelectionHandlesWithSurface()
+                presentSelectionEditMenu(at: selectionEndPoint ?? selectionStartPoint ?? point)
 
             default:
                 break

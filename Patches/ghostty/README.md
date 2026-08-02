@@ -20,9 +20,21 @@ the `libghostty-spm` build pipeline.
 - Every patch in this directory must be safe to re-run.
 - Patches here are applied automatically by `Script/build-ghostty.sh`, so they
   affect macOS, iOS, and Mac Catalyst builds equally.
+- `0012-zig16-maccatalyst.patch` maps Ghostty's Apple platform branches to
+  Zig 0.16's `maccatalyst` tag. `0013-libxev-maccatalyst.sh` runs only after
+  Zig fetches the checksum-pinned libxev dependency, validates the exact old
+  allowlist shape, and adds the same tag without modifying unrelated cache
+  content.
+- `0011-selection-range.patch` exposes only endpoint geometry and visibility;
+  it must never expose, decode, or log selected terminal text.
+- `0014-disable-libintl-without-i18n.patch` keeps upstream desktop behavior but
+  omits GNU libintl when this host-managed build explicitly disables Ghostty
+  translations. `Script/check-no-libintl.sh` audits every published slice so
+  a future build-graph change cannot silently restore the static dependency.
 
 ## Current goal
 
 This patch workflow exists so we can carry host-managed IO work required for
-sandboxed iOS, macOS, and Mac Catalyst integration without hiding upstream
+sandboxed iOS, macOS, and Mac Catalyst integration, plus the content-free
+selection-range bridge required for native iOS handles, without hiding upstream
 modifications inside ad-hoc build script edits.

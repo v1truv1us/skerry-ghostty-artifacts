@@ -1,36 +1,27 @@
-# Toolchain versions required by the current reproducibility work.
+# Toolchain versions verified by the current reproducible source build.
 #
-# build.sh records each artifact's exact source, patch hashes, tool versions,
-# and checksums in build/BUILD_INFO.txt. The full pinned source build has not
-# yet completed locally, so do not describe these pins as verified until that
-# clean rebuild and package test pass exists.
+# The evidence is recorded in build/BUILD_INFO.txt. On 2026-07-30, build.sh
+# applied the complete patch inventory to a clean checkout at GHOSTTY_REF,
+# built all seven supported architecture slices, audited the content-free
+# selection-range API and absence of bundled libintl in every XCFramework
+# variant, compiled GhosttyTerminal for macOS, iOS, iOS Simulator, and Mac
+# Catalyst, and passed the package suite.
 #
-# Confirmed 2026-07-24, testing directly against Xcode 26.5 (SDK 26.5) with
-# no compatibility-SDK layer:
-# - Ghostty at GHOSTTY_REF hard-requires exactly Zig 0.15.2
-#   (src/build/zig.zig's requireZig check; Zig 0.16.0 also breaks on an
-#   unrelated std.Io.Dir.readFileAlloc signature change in build.zig).
-# - Zig 0.15.2 has a genuine bug linking its own build-runner host tool
-#   against the SDK 26.5 (Darwin 26.x) toolchain — reproduced with a
-#   minimal `zig build` project with no Ghostty involved at all. Neither
-#   SDKROOT nor MACOSX_DEPLOYMENT_TARGET env overrides route around it.
-#   Zig 0.16.0 does not hit this bug, but can't be used here (see above).
-# - A clean from-source rebuild therefore needs an Xcode/SDK combination
-#   Zig 0.15.2 can actually link against (e.g. the iOS/iOS Simulator 18.4
-#   and macOS 15.4 SDKs below), which on this machine means installing an
-#   older Xcode (the macOS 15.4 SDK is already present via Command Line
-#   Tools, but the iOS 18.4 SDKs are not) — gated behind a developer's own
-#   Apple ID sign-in, not something automatable here.
-#
-# Until that rebuild happens, local development consumes upstream's
-# published, checksummed binary release built from this same GHOSTTY_REF:
-# https://github.com/Lakr233/libghostty-spm/releases/download/storage.1.3.1/GhosttyKit.xcframework.zip
-# sha256: cfb3fbbfe1365e4c90e01969e2576b4dfa33f04975bcafd84c6368514f791fe9
+# Xcode 16.3 and Zig 0.15.2 are no longer prerequisites. GHOSTTY_REF is a
+# post-Zig-0.16 upstream commit. Xcode 26.5 needs Apple's separately installed
+# Metal Toolchain component so `xcrun --sdk macosx metal` can compile Ghostty's
+# shaders. Zig 0.16 renamed Mac Catalyst targets and its pinned libxev revision
+# did not yet include that tag in three explicit Darwin allowlists; the narrow,
+# fail-closed compatibility patches are recorded with the rest of the build.
 
 xcode=26.5 (17F42)
-zig=0.15.2
+metal_toolchain=17F42 (com.apple.dt.toolchain.Metal.32023.883)
+zig=0.16.0
 swift=6.3.2
-macos_sdk=15.4
-iphoneos_sdk=18.4
-iphonesimulator_sdk=18.4
-recorded=2026-07-24
+macos_sdk=26.5
+iphoneos_sdk=26.5
+iphonesimulator_sdk=26.5
+ghostty_commit=70c498ac3273661aebf6cce9904c0d42b2e5d299
+artifact_sha256=ccbf7d5f7de55eeb5031c6bf46d0e9b09de9b11bfae532b3093d8ef09832a3cc
+artifact_swiftpm_checksum=ccbf7d5f7de55eeb5031c6bf46d0e9b09de9b11bfae532b3093d8ef09832a3cc
+recorded=2026-07-30

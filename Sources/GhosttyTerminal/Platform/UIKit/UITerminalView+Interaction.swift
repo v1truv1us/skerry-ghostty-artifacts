@@ -206,13 +206,33 @@
             becomeFirstResponder()
             hideSelectionHandles()
             guard let surface else { return }
-            // Ghostty intentionally activates recognized links with Command-click
-            // on Apple platforms. A direct touch has no hardware modifier, so it
-            // must emulate Command for URL activation to be reachable on iPhone
-            // and iPad. Non-link mouse events continue through Ghostty normally.
-            let mods = TerminalInputModifiers.singleTapClick(
-                isMouseCaptured: surface.isMouseCaptured
-            ).ghosttyMods
+            // Ghostty intentionally activates recognized links with
+            // Command-click. An uncaptured tap can emulate Command because a
+            // plain click has no remote consumer. Under mouse capture, only an
+            // explicitly armed/locked accessory Command may do so; otherwise
+            // forcing Command here makes TUI cursor taps unreachable again.
+            #if targetEnvironment(macCatalyst)
+                // Catalyst uses real pointer modifiers and has no iOS sticky
+                // accessory. Keep this source shared without inventing state
+                // that the Catalyst input path cannot expose.
+                let explicitlyActivatesLink = false
+            #else
+                let explicitlyActivatesLink = stickyModifiers
+                    .consumeCommandForPointerLinkActivation()
+            #endif
+            let tapPlan = TerminalInputModifiers.singleTapClickPlan(
+                isMouseCaptured: surface.isMouseCaptured,
+                explicitlyActivatesLink: explicitlyActivatesLink
+            )
+            let mods = tapPlan.modifiers.ghosttyMods
+            if tapPlan.refreshesLinkState {
+                // The embedded runtime suppresses same-position mouse moves,
+                // including modifier-only changes. Resetting to its documented
+                // outside-viewport sentinel makes a second tap on the same URL
+                // re-evaluate the link before the button event. Shift prevents
+                // this synthetic move from reaching a mouse-capturing TUI.
+                surface.sendMousePos(x: -1, y: -1, mods: mods)
+            }
             surface.sendMousePos(x: location.x, y: location.y, mods: mods)
             surface.sendMouseButton(
                 state: GHOSTTY_MOUSE_PRESS,
@@ -239,7 +259,6 @@
                     ? TerminalInputModifiers.shift.ghosttyMods
                     : ghostty_input_mods_e(rawValue: 0)
                 isTerminalSelectionActive = true
-                selectionStartPoint = location
                 surface.sendMousePos(
                     x: location.x,
                     y: location.y,
@@ -253,7 +272,6 @@
 
             case .changed:
                 guard isTerminalSelectionActive else { return }
-                selectionEndPoint = location
                 surface.sendMousePos(
                     x: location.x,
                     y: location.y,
@@ -262,7 +280,6 @@
 
             case .ended:
                 guard isTerminalSelectionActive else { return }
-                selectionEndPoint = location
                 finishTerminalSelection(at: location, showMenu: true)
 
             case .cancelled, .failed:
@@ -288,12 +305,13 @@
             )
             isTerminalSelectionActive = false
 
-            guard showMenu, let start = selectionStartPoint else {
+            guard showMenu else {
                 hideSelectionHandles()
                 return
             }
-            showSelectionHandles(start: start, end: location)
-            presentSelectionEditMenu(at: location)
+            ownsTerminalSelectionRange = true
+            guard synchronizeSelectionHandlesWithSurface() else { return }
+            presentSelectionEditMenu(at: selectionEndPoint ?? selectionStartPoint ?? location)
         }
 
         @objc func handleTouchScrollGesture(
@@ -305,7 +323,7 @@
                 touchScrollContextTask?.cancel()
                 touchScrollGestureGeneration += 1
                 stopMomentumScrolling()
-                hideSelectionHandles()
+                terminalEditMenuInteraction.dismissMenu()
                 touchScrollLineRemainder = 0
                 bufferedTouchScroll = .zero
                 pendingTouchScrollEndVelocity = nil
@@ -540,7 +558,12 @@
 
         @objc func handleTerminalWindowSwipeGesture(_ gesture: UIPanGestureRecognizer) {
             guard gesture.state == .ended, let touchActionHandler else { return }
-            guard !pinchChangedFontSize else { return }
+            #if !targetEnvironment(macCatalyst)
+                // This gesture is installed only on touch UIKit. Keeping the
+                // pinch-owned suppression inside the same platform boundary
+                // also lets the shared source compile for Mac Catalyst.
+                guard !pinchChangedFontSize else { return }
+            #endif
             let translation = gesture.translation(in: self)
             let velocity = gesture.velocity(in: self)
             guard abs(translation.x) >= 44,

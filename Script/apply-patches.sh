@@ -52,17 +52,27 @@ apply_unified_patch() {
     local patch_file="$1"
 
     if [ -d "$SOURCE_DIR/.git" ] && command -v git >/dev/null 2>&1; then
+        # Forward and reverse checks can both succeed when a multi-file patch
+        # adds a file while another hunk resembles already-present code. The
+        # orchestrator starts from a verified clean checkout, so forward must
+        # win or a required patch can be silently skipped.
+        if git -C "$SOURCE_DIR" apply --check "$patch_file" >/dev/null 2>&1; then
+            git -C "$SOURCE_DIR" apply "$patch_file"
+            echo "[+] applied patch: $(basename "$patch_file")"
+            return
+        fi
+
         if git -C "$SOURCE_DIR" apply --check --reverse "$patch_file" >/dev/null 2>&1; then
             echo "[+] patch already applied: $(basename "$patch_file")"
             return
         fi
 
-        if ! git -C "$SOURCE_DIR" apply --check "$patch_file" >/dev/null 2>&1; then
-            echo "[-] failed to validate patch: $patch_file"
-            exit 1
-        fi
+        echo "[-] failed to validate patch: $patch_file"
+        exit 1
+    fi
 
-        git -C "$SOURCE_DIR" apply "$patch_file"
+    if patch -p1 --dry-run -d "$SOURCE_DIR" <"$patch_file" >/dev/null 2>&1; then
+        patch -p1 -d "$SOURCE_DIR" <"$patch_file" >/dev/null
         echo "[+] applied patch: $(basename "$patch_file")"
         return
     fi
@@ -72,13 +82,8 @@ apply_unified_patch() {
         return
     fi
 
-    if ! patch -p1 --dry-run -d "$SOURCE_DIR" <"$patch_file" >/dev/null 2>&1; then
-        echo "[-] failed to validate patch: $patch_file"
-        exit 1
-    fi
-
-    patch -p1 -d "$SOURCE_DIR" <"$patch_file" >/dev/null
-    echo "[+] applied patch: $(basename "$patch_file")"
+    echo "[-] failed to validate patch: $patch_file"
+    exit 1
 }
 
 # Ghostty's host-managed I/O surface gained a foreground-PID getter partway

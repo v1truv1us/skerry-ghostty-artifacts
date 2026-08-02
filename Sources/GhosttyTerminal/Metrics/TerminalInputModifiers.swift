@@ -31,16 +31,48 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
     public static let altRight = TerminalInputModifiers(rawValue: 1 << 8)
     public static let superRight = TerminalInputModifiers(rawValue: 1 << 9)
 
-    /// Modifiers for a synthesized (touch) single-tap click. A touch has no
+    /// Routing for a synthesized (touch) single-tap click. A touch has no
     /// hardware modifier key, so an uncaptured tap emulates Command to reach
     /// Ghostty's local link check — a plain tap has no other use when nothing
     /// remote is reading the mouse. When the remote program has captured the
     /// mouse (tmux, vim, or a full-screen coding-agent CLI enabling mouse
-    /// reporting for its own click handling), the tap is forwarded unmodified
-    /// instead, matching AppKit's real-modifier `mouseDown` parity, so the
-    /// remote program can position its own cursor from the click.
-    public static func singleTapClick(isMouseCaptured: Bool) -> TerminalInputModifiers {
-        isMouseCaptured ? [] : .super_
+    /// reporting for its own click handling), an ordinary tap is forwarded
+    /// unmodified instead, matching AppKit's real-modifier `mouseDown` parity.
+    /// Arming the visible Command accessory is the explicit local-only escape
+    /// hatch. Ghostty requires Shift to bypass remote mouse capture and then
+    /// evaluates Command for the local link action, so the captured route must
+    /// carry both modifiers. A local-link route also refreshes hover state from
+    /// outside the viewport first because Ghostty otherwise drops a modifier-
+    /// only update at the same pointer coordinates.
+    static func singleTapClickPlan(
+        isMouseCaptured: Bool,
+        explicitlyActivatesLink: Bool = false
+    ) -> TerminalTapEventPlan {
+        if isMouseCaptured {
+            return explicitlyActivatesLink
+                ? TerminalTapEventPlan(
+                    modifiers: [.shift, .super_],
+                    refreshesLinkState: true
+                )
+                : TerminalTapEventPlan(
+                    modifiers: [],
+                    refreshesLinkState: false
+                )
+        }
+        return TerminalTapEventPlan(
+            modifiers: .super_,
+            refreshesLinkState: true
+        )
+    }
+
+    public static func singleTapClick(
+        isMouseCaptured: Bool,
+        explicitlyActivatesLink: Bool = false
+    ) -> TerminalInputModifiers {
+        singleTapClickPlan(
+            isMouseCaptured: isMouseCaptured,
+            explicitlyActivatesLink: explicitlyActivatesLink
+        ).modifiers
     }
 
     public var ghosttyMods: ghostty_input_mods_e {
@@ -71,4 +103,9 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
             self = mods
         }
     #endif
+}
+
+struct TerminalTapEventPlan: Equatable {
+    let modifiers: TerminalInputModifiers
+    let refreshesLinkState: Bool
 }

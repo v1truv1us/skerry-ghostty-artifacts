@@ -64,9 +64,9 @@ new_block = """    const sw = surface.getWidth();
     const dw: usize = if (width > sw) width - sw else sw - width;
     const dh: usize = if (height > sh) height - sh else sh - height;
     // iOS UIKit rounding can produce ±1px discrepancy; macOS must match exactly
-    const max_drift: usize = if (comptime builtin.os.tag == .ios) 1 else 0;
+    const max_drift: usize = if (comptime builtin.os.tag == .ios or builtin.os.tag == .maccatalyst) 1 else 0;
     if (dw > max_drift or dh > max_drift) {
-        if (comptime builtin.os.tag == .ios) {
+        if (comptime builtin.os.tag == .ios or builtin.os.tag == .maccatalyst) {
             // Recalculate contentsScale so CA maps surface pixels to layer points
             const pw = bounds.size.width;
             const ph = bounds.size.height;
@@ -96,7 +96,7 @@ old_cls = """    const CALayer =
     var subclass =
         objc.allocateClassPair(CALayer, "IOSurfaceLayer") orelse return error.ObjCFailed;"""
 
-new_cls = """    const parent_cls = if (comptime builtin.os.tag == .ios)
+new_cls = """    const parent_cls = if (comptime builtin.os.tag == .ios or builtin.os.tag == .maccatalyst)
         // CAIOSurfaceLayer provides native zero-copy IOSurface compositing
         objc.getClass("CAIOSurfaceLayer") orelse
             objc.getClass("CALayer") orelse return error.ObjCFailed
@@ -156,7 +156,7 @@ new_cb = """        @ptrCast(&displayCallback),
 
     // iOS: sublayer bounds are already set before the callback is wired up,
     // so no display message fires automatically. Kick the first frame.
-    if (comptime builtin.os.tag == .ios) {
+    if (comptime builtin.os.tag == .ios or builtin.os.tag == .maccatalyst) {
         self.layer.layer.msgSend(void, objc.sel("setNeedsDisplay"), .{});
     }
 }"""
@@ -178,7 +178,7 @@ old_present = """pub inline fn present(self: *Metal, target: Target, sync: bool)
 new_present = """pub inline fn present(self: *Metal, target: Target, sync: bool) !void {
     // iOS: always present synchronously — the render loop already runs on
     // the main thread, so the async GCD hop is unnecessary overhead.
-    if (comptime builtin.os.tag == .ios) {
+    if (comptime builtin.os.tag == .ios or builtin.os.tag == .maccatalyst) {
         try self.layer.setSurface(target.surface);
         return;
     }
@@ -246,7 +246,7 @@ old_create = """        // Create the CF release thread.
             CFReleaseThread.threadMain,
             .{cf_release_thread},
         );
-        cf_release_thr.setName("cf_release") catch {};
+        cf_release_thr.setName(global.io(), "cf_release") catch {};
 
         return .{"""
 
@@ -255,13 +255,13 @@ new_create = """        // On iOS the kqueue-based event loop used by the releas
         // and fall through to synchronous release in endFrame.
         var cf_release_thread: ?*CFReleaseThread = null;
         var cf_release_thr: ?std.Thread = null;
-        if (comptime builtin.os.tag != .ios) {
+        if (comptime builtin.os.tag != .ios and builtin.os.tag != .maccatalyst) {
             const thr_obj = try alloc.create(CFReleaseThread);
             errdefer alloc.destroy(thr_obj);
             thr_obj.* = try .init(alloc);
             errdefer thr_obj.deinit();
             const thr = try std.Thread.spawn(.{}, CFReleaseThread.threadMain, .{thr_obj});
-            thr.setName("cf_release") catch {};
+            thr.setName(global.io(), "cf_release") catch {};
             cf_release_thread = thr_obj;
             cf_release_thr = thr;
         }
@@ -302,7 +302,7 @@ src = src.replace(old_deinit, new_deinit)
 old_end = """        // Send the items. If the send succeeds then we wake up the
         // thread to process the items. If the send fails then do a manual
         // cleanup.
-        if (self.cf_release_thread.mailbox.push(.{ .release = .{
+        if (self.cf_release_thread.mailbox.push(global.io(), .{ .release = .{
             .refs = items,
             .alloc = self.alloc,
         } }, .{ .forever = {} }) != 0) {
@@ -320,7 +320,7 @@ old_end = """        // Send the items. If the send succeeds then we wake up the
 new_end = """        // Offload to the background release thread when available.
         // On iOS cf_release_thread is nil, so we fall through to sync release.
         if (self.cf_release_thread) |thr_obj| {
-            if (thr_obj.mailbox.push(.{ .release = .{
+            if (thr_obj.mailbox.push(global.io(), .{ .release = .{
                 .refs = items,
                 .alloc = self.alloc,
             } }, .{ .forever = {} }) != 0) {
@@ -461,12 +461,17 @@ fi
 # =============================================================================
 BUILD_ZON="${SOURCE_DIR}/build.zig.zon"
 if [ -f "$BUILD_ZON" ]; then
-    if ! grep -q '7e7d2f2ab4700544657f8ec268715c8ef320d839' "$BUILD_ZON"; then
+    if grep -q 'libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e' "$BUILD_ZON"; then
         sed -i '' 's|"https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz"|"https://github.com/mitchellh/libxev/archive/7e7d2f2ab4700544657f8ec268715c8ef320d839.tar.gz"|' "$BUILD_ZON"
         sed -i '' 's|"libxev-0.0.0-86vtc4IcEwCqEYxEYoN_3KXmc6A9VLcm22aVImfvecYs"|"libxev-0.0.0-86vtcwE9EwB942iWRnaNMXHv3n0BeLAs_tVhrs5cT8cQ"|' "$BUILD_ZON"
         echo "[+] patched build.zig.zon: updated libxev for iOS mach port fix"
-    else
+    elif grep -q 'libxev-9ce8e8e6ff89e583258a7f8e7adeeeaeae8611bf' "$BUILD_ZON"; then
+        echo "[+] upstream libxev already includes the iOS mach port fix"
+    elif grep -q '7e7d2f2ab4700544657f8ec268715c8ef320d839' "$BUILD_ZON"; then
         echo "[+] libxev already updated"
+    else
+        echo "[!] unrecognized libxev dependency; review iOS mach port compatibility"
+        exit 1
     fi
 fi
 

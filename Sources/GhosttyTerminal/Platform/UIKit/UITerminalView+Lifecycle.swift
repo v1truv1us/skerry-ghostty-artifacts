@@ -65,6 +65,7 @@
             // drag), so use the size-gated variant to skip the FFI resize and
             // forced redraw when nothing actually moved.
             core.fitToSizeIfChanged()
+            synchronizeSelectionHandlesWithSurface()
         }
 
         internal func resolvedDisplayScale() -> CGFloat {

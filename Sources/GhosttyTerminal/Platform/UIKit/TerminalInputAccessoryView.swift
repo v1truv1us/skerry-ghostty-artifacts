@@ -16,10 +16,17 @@
 
         // Read via `Self.` before `super.init()` runs (the frame height
         // argument), so these must stay static rather than instance state.
-        private static let rowHeight: CGFloat = 60
-        private static let interRowSpacing: CGFloat = 6
-        private static var barHeight: CGFloat { rowHeight * 2 + interRowSpacing }
-        private let buttonSize: CGFloat = 44
+        // Keep the 44pt horizontal target but use a shorter rounded rectangle
+        // and a small amount of row breathing room. The prior 44x44 circles
+        // consumed terminal height without improving horizontal reach.
+        private static let rowHeight: CGFloat = 36
+        private static let interRowSpacing: CGFloat = 2
+        private static let contentVerticalInset: CGFloat = 3
+        private static var barHeight: CGFloat {
+            rowHeight * 2 + interRowSpacing + contentVerticalInset * 2
+        }
+        private let buttonWidth: CGFloat = 44
+        private let buttonHeight: CGFloat = 32
 
         private lazy var blurView = UIVisualEffectView(
             effect: makeBarEffect()
@@ -59,11 +66,15 @@
             systemImage: "option",
             modifier: .alt
         )
-        private lazy var cmdButton = makeModifierButton(
-            title: "Command",
-            systemImage: "command",
-            modifier: .command
-        )
+        private lazy var cmdButton: AccessoryButton = {
+            let button = makeModifierButton(
+                title: "Command",
+                systemImage: "command",
+                modifier: .command
+            )
+            button.accessibilityHint = "Tap once, then tap a terminal link to open it. Double-tap to lock Command."
+            return button
+        }()
         private lazy var tabButton = makeKeyButton(
             title: "Tab",
             systemImage: "arrow.right.to.line",
@@ -89,22 +100,22 @@
         )
         private lazy var leftButton = makeKeyButton(
             title: "Left",
-            systemImage: "arrowshape.left",
+            systemImage: "arrowtriangle.left.fill",
             key: .arrowLeft
         )
         private lazy var upButton = makeKeyButton(
             title: "Up",
-            systemImage: "arrowshape.up",
+            systemImage: "arrowtriangle.up.fill",
             key: .arrowUp
         )
         private lazy var downButton = makeKeyButton(
             title: "Down",
-            systemImage: "arrowshape.down",
+            systemImage: "arrowtriangle.down.fill",
             key: .arrowDown
         )
         private lazy var rightButton = makeKeyButton(
             title: "Right",
-            systemImage: "arrowshape.right",
+            systemImage: "arrowtriangle.right.fill",
             key: .arrowRight
         )
         private lazy var pasteButton = makeKeyButton(
@@ -120,11 +131,11 @@
         }
 
         private lazy var hideKeyboardButton: AccessoryButton = {
-            let button = AccessoryButton(size: buttonSize) { [weak self] in
+            let button = makeAccessoryButton { [weak self] in
                 self?.eligibleTerminalView?.window?.endEditing(true)
             }
             button.accessibilityLabel = "Hide Keyboard"
-            button.setImage(UIImage(systemName: "keyboard.chevron.compact.down"), for: .normal)
+            button.setSystemImage(named: "keyboard.chevron.compact.down")
             return button
         }()
 
@@ -254,14 +265,19 @@
             blurView.contentView.addSubview(hideKeyboardButton)
             NSLayoutConstraint.activate([
                 hideKeyboardButton.trailingAnchor.constraint(equalTo: blurView.contentView.trailingAnchor, constant: -10),
-                hideKeyboardButton.centerYAnchor.constraint(equalTo: blurView.contentView.centerYAnchor),
             ])
 
             NSLayoutConstraint.activate([
                 rowsStackView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor),
                 rowsStackView.trailingAnchor.constraint(equalTo: hideKeyboardButton.leadingAnchor, constant: -8),
-                rowsStackView.topAnchor.constraint(equalTo: blurView.contentView.topAnchor),
-                rowsStackView.bottomAnchor.constraint(equalTo: blurView.contentView.bottomAnchor),
+                rowsStackView.topAnchor.constraint(
+                    equalTo: blurView.contentView.topAnchor,
+                    constant: Self.contentVerticalInset
+                ),
+                rowsStackView.bottomAnchor.constraint(
+                    equalTo: blurView.contentView.bottomAnchor,
+                    constant: -Self.contentVerticalInset
+                ),
             ])
 
             // Command row on top, nav row on bottom: subview order in a
@@ -272,6 +288,15 @@
             // for.
             setupRow(scrollView: commandScrollView, stackView: commandStackView, in: rowsStackView)
             setupRow(scrollView: navScrollView, stackView: navStackView, in: rowsStackView)
+
+            // Bottom-align with the nav row (nearest the keyboard) rather than
+            // the whole two-row bar's center. navScrollView has no superview
+            // until the setupRow() call above arranges it inside rowsStackView,
+            // so this constraint must activate after that point or it has no
+            // common ancestor with hideKeyboardButton to resolve against.
+            NSLayoutConstraint.activate([
+                hideKeyboardButton.centerYAnchor.constraint(equalTo: navScrollView.centerYAnchor),
+            ])
 
             addArrangedViews([
                 interruptButton,
@@ -335,7 +360,7 @@
             }
 
             customActionButtons = (terminalView?.inputAccessoryActions ?? []).map { action in
-                let button = AccessoryButton(size: buttonSize) { [weak self] in
+                let button = makeAccessoryButton { [weak self] in
                     guard let terminalView = self?.eligibleTerminalView else { return }
                     terminalView.inputAccessoryActions.first { $0.id == action.id }?.handler()
                 }
@@ -343,7 +368,7 @@
                 let imageName = action.isSelected
                     ? action.selectedSystemImage ?? action.systemImage
                     : action.systemImage
-                button.setImage(UIImage(systemName: imageName), for: .normal)
+                button.setSystemImage(named: imageName)
                 return button
             }
             customActionDivider.isHidden = customActionButtons.isEmpty
@@ -375,11 +400,11 @@
             systemImage: String,
             modifier: TerminalStickyModifierState.Modifier
         ) -> AccessoryButton {
-            let button = AccessoryButton(size: buttonSize) { [weak self] in
+            let button = makeAccessoryButton { [weak self] in
                 self?.eligibleTerminalView?.stickyModifiers.toggle(modifier)
             }
             button.accessibilityLabel = title
-            button.setImage(UIImage(systemName: systemImage), for: .normal)
+            button.setSystemImage(named: systemImage)
             return button
         }
 
@@ -389,13 +414,13 @@
             accessibilityLabel: String? = nil,
             key: TerminalInputBarKey
         ) -> AccessoryButton {
-            let button = AccessoryButton(size: buttonSize) { [weak self] in
+            let button = makeAccessoryButton { [weak self] in
                 self?.eligibleTerminalView?.handleInputBarKey(key)
             }
             button.accessibilityLabel = accessibilityLabel ?? title
 
             if let systemImage {
-                button.setImage(UIImage(systemName: systemImage), for: .normal)
+                button.setSystemImage(named: systemImage)
             } else {
                 var configuration = UIButton.Configuration.plain()
                 configuration.baseForegroundColor = .label
@@ -411,6 +436,14 @@
             }
 
             return button
+        }
+
+        private func makeAccessoryButton(handler: @escaping () -> Void) -> AccessoryButton {
+            AccessoryButton(
+                width: buttonWidth,
+                height: buttonHeight,
+                handler: handler
+            )
         }
 
         private var preferredHeight: CGFloat {
@@ -445,9 +478,8 @@
             blurView.effect = makeBarEffect()
             blurView.layer.cornerCurve = .continuous
             blurView.layer.cornerRadius = if #available(iOS 26, *) {
-                // Cap at a single row's radius rather than half the new
-                // two-row height, so the taller bar keeps the same pill
-                // curvature as before instead of ballooning it.
+                // Cap at a single row's radius so the compact two-row glass
+                // retains its toolbar shape rather than becoming a large pill.
                 min(Self.barHeight / 2, Self.rowHeight / 2)
             } else {
                 0
@@ -472,6 +504,10 @@
             }
         }
 
-        private static let symbols: [String] = []
+        // Backtick is absent from iOS's stock keyboard entirely; tilde, pipe,
+        // and backslash sit two taps deep on the 123→#+= symbol page. Every
+        // other symbol key here is already one tap away, so those four are
+        // the only additions worth surfacing on the bar.
+        private static let symbols: [String] = ["`", "~", "|", "\\"]
     }
 #endif

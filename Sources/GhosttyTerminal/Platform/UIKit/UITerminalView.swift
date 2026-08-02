@@ -79,13 +79,15 @@
         var isTerminalSelectionActive = false
         var terminalSelectionModifiers = ghostty_input_mods_e(rawValue: 0)
         lazy var terminalEditMenuInteraction = UIEditMenuInteraction(delegate: self)
-        // The screen points last sent to Ghostty as the selection's fixed
-        // and moving ends. Ghostty has no API to read an active selection's
-        // endpoint geometry back (only a single bundled-with-text point), so
-        // these handles track the points this view itself already sent.
+        // These points are snapshots of Ghostty's authoritative selected
+        // range, never the touches that initiated or adjusted it. Keeping an
+        // explicit ownership bit lets both offscreen endpoints disappear and
+        // return after scrolling without mistaking invisibility for selection
+        // cancellation.
+        var ownsTerminalSelectionRange = false
         var selectionStartPoint: CGPoint?
         var selectionEndPoint: CGPoint?
-        var selectionHandleDragOrigin: CGPoint?
+        var selectionHandleDragTouchOffset: CGPoint?
         // Match UIKit's normal long-press intent threshold. The previous
         // 0.35-second/28-point combination classified an ordinary deliberate
         // one-finger drag as selection before scrolling could begin.
@@ -256,6 +258,7 @@
             }
             core.onPostRender = { [weak self] in
                 self?.enforceSublayerScale()
+                self?.synchronizeSelectionHandlesWithSurface()
                 self?.postRenderHandler?()
             }
 

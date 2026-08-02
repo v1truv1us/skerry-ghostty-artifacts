@@ -1,4 +1,5 @@
 #if canImport(UIKit) && !targetEnvironment(macCatalyst)
+import GhosttyKit
 import UIKit
 import XCTest
 @testable import GhosttyTerminal
@@ -140,6 +141,32 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertEqual(recorder.data, Data([0x09]))
     }
 
+    /// The bundled accessory bar's symbol row was empty until now. Backtick
+    /// is absent from iOS's stock keyboard entirely; tilde, pipe, and
+    /// backslash sit two taps deep on the 123→#+= page. Confirms every
+    /// intended symbol renders a findable button and dispatches its raw byte,
+    /// mirroring testHostManagedTabSendsRawByteWithoutRenderedSurface's proof
+    /// that accessory input works without a rendered Ghostty surface.
+    func testHostManagedSymbolButtonsSendRawBytesWithoutRenderedSurface() throws {
+        let recorder = TerminalInputRecorder()
+        let session = InMemoryTerminalSession(
+            write: { recorder.append($0) },
+            resize: { _ in }
+        )
+        let terminal = UITerminalView(frame: .zero)
+        terminal.configuration = TerminalSurfaceOptions(
+            backend: .inMemory(session)
+        )
+        terminal.isResponderEligible = true
+        let inputBar = TerminalInputBar(terminalView: terminal)
+
+        for label in ["`", "~", "|", "\\"] {
+            try tapButton(label: label, in: inputBar)
+        }
+
+        XCTAssertEqual(recorder.data, Data([0x60, 0x7E, 0x7C, 0x5C]))
+    }
+
     func testHostManagedInputBarRejectsCommandsForAnIneligibleTarget() throws {
         let terminal = UITerminalView(frame: .zero)
         var actionCount = 0
@@ -151,6 +178,114 @@ final class UITerminalInspectionTests: XCTestCase {
 
         XCTAssertEqual(actionCount, 0)
         XCTAssertEqual(terminal.stickyActivation(for: .ctrl), .inactive)
+    }
+
+    /// Command-then-tap would otherwise be an invisible interaction to
+    /// VoiceOver users because the accessory is rendered as a symbol only.
+    func testCommandAccessoryExplainsCapturedTerminalLinkActivation() throws {
+        let inputBar = TerminalInputBar()
+        let commandButton = try XCTUnwrap(findButton(label: "Command", in: inputBar))
+
+        XCTAssertEqual(
+            commandButton.accessibilityHint,
+            "Tap once, then tap a terminal link to open it. Double-tap to lock Command."
+        )
+    }
+
+    /// The circular two-row controls consumed too much of the already-small
+    /// phone terminal. Keep their 44-point width, shorten the visual control,
+    /// and use filled arrowheads so Up cannot be mistaken for the outlined
+    /// Control symbol while the compact bar remains legible.
+    func testActionBarUsesShortRectangularButtonsAndFilledArrowheads() throws {
+        let inputBar = TerminalInputBar()
+        inputBar.frame = CGRect(
+            origin: .zero,
+            size: CGSize(width: 390, height: inputBar.intrinsicContentSize.height)
+        )
+        inputBar.layoutIfNeeded()
+
+        let control = try XCTUnwrap(
+            findButton(label: "Control", in: inputBar) as? AccessoryButton
+        )
+        XCTAssertEqual(control.bounds.width, 44, accuracy: 0.5)
+        XCTAssertEqual(control.bounds.height, 32, accuracy: 0.5)
+        XCTAssertLessThan(control.bounds.height, control.bounds.width)
+        XCTAssertEqual(control.layer.cornerRadius, 10, accuracy: 0.5)
+
+        let expectedArrowheads = [
+            "Left": "arrowtriangle.left.fill",
+            "Up": "arrowtriangle.up.fill",
+            "Down": "arrowtriangle.down.fill",
+            "Right": "arrowtriangle.right.fill",
+        ]
+        for (label, imageName) in expectedArrowheads {
+            let button = try XCTUnwrap(
+                findButton(label: label, in: inputBar) as? AccessoryButton
+            )
+            XCTAssertEqual(button.systemImageName, imageName)
+        }
+
+        let glassView = try XCTUnwrap(
+            inputBar.subviews.compactMap { $0 as? UIVisualEffectView }.first
+        )
+        XCTAssertEqual(glassView.bounds.height, 80, accuracy: 0.5)
+    }
+
+    /// Command-then-tap is the explicit local-link path inside a
+    /// mouse-capturing TUI. One-shot Command must clear after that tap while
+    /// unrelated modifiers remain armed; locked Command intentionally persists.
+    func testPointerLinkActivationConsumesOnlyOneShotCommandModifier() {
+        let modifiers = TerminalStickyModifierState()
+        modifiers.toggle(.ctrl)
+        modifiers.toggle(.command)
+
+        XCTAssertTrue(modifiers.consumeCommandForPointerLinkActivation())
+        XCTAssertTrue(modifiers.command == .inactive)
+        XCTAssertTrue(modifiers.ctrl == .armed)
+
+        modifiers.toggle(.command)
+        modifiers.toggle(.command)
+        XCTAssertTrue(modifiers.command == .locked)
+        XCTAssertTrue(modifiers.consumeCommandForPointerLinkActivation())
+        XCTAssertTrue(modifiers.command == .locked)
+    }
+
+    /// The user's OpenCode link tap failed because that TUI owns terminal
+    /// mouse reporting. The explicit Command accessory route must bypass the
+    /// capture, refresh a repeated pointer position, and deliver Ghostty's URL
+    /// action to the host without emitting the click to OpenCode.
+    func testCommandArmedTapOpensLinkInsideMouseCapturedOpenCodeStyleTerminal() async throws {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let state = TerminalViewState()
+        var openedURL: String?
+        state.onOpenURL = { value, _ in openedURL = value }
+
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        terminal.controller = state.controller
+        terminal.delegate = state
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        terminal.isResponderEligible = true
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: terminal.bounds)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        await Task.yield()
+        await Task.yield()
+        let surface = try XCTUnwrap(terminal.surface)
+        session.receive(Data("https://example.com\r\n\u{1B}[?1000h".utf8))
+        await Task.yield()
+        XCTAssertTrue(surface.isMouseCaptured)
+
+        let linkPoint = CGPoint(x: 40, y: 13)
+        terminal.handleTerminalTap(state: .ended, location: linkPoint)
+        terminal.toggleStickyModifier(.command)
+        terminal.handleTerminalTap(state: .ended, location: linkPoint)
+
+        XCTAssertEqual(openedURL, "https://example.com")
+        XCTAssertEqual(terminal.stickyActivation(for: .command), .inactive)
     }
 
     func testOnlyCompletedTapRequestsFirstResponderWithoutSurface() {
@@ -208,6 +343,61 @@ final class UITerminalInspectionTests: XCTestCase {
         )
         XCTAssertEqual(terminal.terminalScrollGestureRecognizer.minimumNumberOfTouches, 1)
         XCTAssertEqual(terminal.terminalScrollGestureRecognizer.maximumNumberOfTouches, 1)
+    }
+
+    /// Build 11 placed both native handles at the raw long-press points, so
+    /// Ghostty's word/cell snapping could leave the visible endpoints collapsed
+    /// or detached from the highlight. The C boundary must return content-free
+    /// surface geometry and UIKit must anchor its distinct leading/trailing
+    /// controls to that range instead of either initiating touch.
+    func testSelectionHandlesUseGhosttyRangeInsteadOfLongPressTouchPoints() async throws {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        terminal.controller = TerminalController()
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: terminal.bounds)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        await Task.yield()
+        await Task.yield()
+        let surface = try XCTUnwrap(terminal.surface)
+        session.receive(Data("0123456789 abcdefghij\r\nsecond line\r\n".utf8))
+        await Task.yield()
+
+        let initiatingTouch = CGPoint(x: 17.25, y: 12.75)
+        let endingTouch = CGPoint(x: 121.5, y: 35.25)
+        let mods = ghostty_input_mods_e(rawValue: 0)
+        surface.sendMousePos(x: initiatingTouch.x, y: initiatingTouch.y, mods: mods)
+        surface.sendMouseButton(
+            state: GHOSTTY_MOUSE_PRESS,
+            button: GHOSTTY_MOUSE_LEFT,
+            mods: mods
+        )
+        surface.sendMousePos(x: endingTouch.x, y: endingTouch.y, mods: mods)
+        surface.sendMouseButton(
+            state: GHOSTTY_MOUSE_RELEASE,
+            button: GHOSTTY_MOUSE_LEFT,
+            mods: mods
+        )
+
+        terminal.ownsTerminalSelectionRange = true
+        XCTAssertTrue(terminal.synchronizeSelectionHandlesWithSurface())
+        let range = try XCTUnwrap(surface.selectionRange())
+        let leading = try XCTUnwrap(range.leading)
+        let trailing = try XCTUnwrap(range.trailing)
+
+        XCTAssertNotEqual(leading, initiatingTouch)
+        XCTAssertNotEqual(trailing, endingTouch)
+        XCTAssertEqual(terminal.selectionStartPoint, leading)
+        XCTAssertEqual(terminal.selectionEndPoint, trailing)
+        XCTAssertEqual(terminal.startSelectionHandle.frame.maxY, leading.y, accuracy: 0.001)
+        XCTAssertEqual(terminal.endSelectionHandle.frame.minY, trailing.y, accuracy: 0.001)
+        XCTAssertLessThan(leading.x, trailing.x)
+        XCTAssertLessThan(leading.y, trailing.y)
     }
 
     /// Build 6 fired an asynchronous refresh and immediately routed from the

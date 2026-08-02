@@ -7,18 +7,21 @@
     import UIKit
 
     final class AccessoryButton: UIButton {
-        private let size: CGFloat
+        private(set) var systemImageName: String?
         private let handler: () -> Void
         private let lockIndicator = UIView()
         private let selectionFeedback = UISelectionFeedbackGenerator()
 
-        init(size: CGFloat, handler: @escaping () -> Void) {
-            self.size = size
+        init(width: CGFloat, height: CGFloat, handler: @escaping () -> Void) {
             self.handler = handler
             super.init(frame: .zero)
 
             translatesAutoresizingMaskIntoConstraints = false
-            layer.cornerRadius = size / 2
+            // A low-radius rounded rectangle keeps the toolbar visually light
+            // without turning every key into a large circle. Width remains
+            // generous for thumb targeting while the shorter height returns
+            // terminal space above the keyboard.
+            layer.cornerRadius = min(10, height / 2)
             layer.cornerCurve = .continuous
             clipsToBounds = true
 
@@ -29,8 +32,8 @@
             imageView?.contentMode = .scaleAspectFit
 
             NSLayoutConstraint.activate([
-                widthAnchor.constraint(equalToConstant: size),
-                heightAnchor.constraint(equalToConstant: size),
+                widthAnchor.constraint(equalToConstant: width),
+                heightAnchor.constraint(equalToConstant: height),
             ])
 
             lockIndicator.translatesAutoresizingMaskIntoConstraints = false
@@ -58,6 +61,11 @@
         @available(*, unavailable)
         required init?(coder _: NSCoder) {
             fatalError("init(coder:) has not been implemented")
+        }
+
+        func setSystemImage(named name: String) {
+            systemImageName = name
+            setImage(UIImage(systemName: name), for: .normal)
         }
 
         func applyRegularStyle(_ style: TerminalInputAccessoryStyle) {

@@ -188,24 +188,33 @@ The bundled `libghostty` is a trimmed build optimized for sandboxed, embedded us
 | Custom shaders (GLSL)            | Yes              | **No**           | `glslang` and `spirv-cross` removed (`-Dcustom-shaders=false`). Shadertoy/post-processing shaders are a desktop feature unnecessary for embedded use. |
 | Terminal inspector (ImGui)       | Yes              | **No**           | `dcimgui` (Dear ImGui) removed (`-Dinspector=false`). Debug inspector UI replaced with no-op stubs.                                                   |
 | Sentry crash reporting           | Yes              | **No**           | Disabled (`-Dsentry=false`). Not needed for library consumers.                                                                                        |
+| Translations / GNU libintl       | Yes              | **No**           | Disabled (`-Di18n=false`); every final archive is audited to reject bundled libintl symbols.                                                          |
 | Native app runtime               | Yes              | **No**           | Cocoa/GTK/Wayland app shell disabled (`-Dapp-runtime=none`). The host app provides its own runtime.                                                   |
 | Standalone executable            | Yes              | **No**           | No terminal `.app` or CLI binary emitted (`-Demit-exe=false`).                                                                                        |
 | Documentation generation         | Yes              | **No**           | Skipped (`-Demit-docs=false`).                                                                                                                        |
-| Frame data generator             | Build-time tool  | **Pre-compiled** | `framedata.compressed` shipped pre-built; framegen C tool dependency removed.                                                                         |
+| Frame data generator             | Build-time tool  | Build-time tool  | The pinned source's generator is compiled and run on the host so generated data always matches the selected Ghostty commit.                           |
 | Host-managed I/O backend         | No               | **Added**        | New `GHOSTTY_SURFACE_IO_BACKEND_HOST_MANAGED` for non-PTY, sandbox-safe terminal I/O.                                                                 |
 | iOS Metal rendering fixes        | No               | **Added**        | IOSurface +1px tolerance, synchronous present, 64-byte row alignment for iOS.                                                                         |
 | iOS platform fixes               | No               | **Added**        | Deployment target lowered, private API removed (`CGSSetWindowBackgroundBlurRadius`), kqueue fix for simulator.                                        |
 
 ## Building from Source
 
-The package includes a pre-built XCFramework. To rebuild libghostty from the Ghostty source:
+The package includes a pre-built XCFramework. Rebuild it locally with the
+versions in `TOOLCHAIN_VERSIONS`: Xcode 26.5 plus Apple's Metal Toolchain
+component, and Zig 0.16.0. No obsolete Xcode install or paid GitHub runner is
+required.
 
 ```bash
-# Requires: zig compiler
+# Requires: the pinned current Xcode/Metal/Zig toolchain
 ./Script/build.sh
 ```
 
-This applies patches from `Patches/ghostty/`, builds for all target architectures, and assembles the XCFramework.
+This applies patches from `Patches/ghostty/`, builds all supported target
+architectures, assembles the XCFramework, audits every slice, and tests that
+exact local artifact across macOS, iOS, iOS Simulator, and Mac Catalyst. The
+selection-range API and absence of bundled libintl are both fail-closed audits.
+The production manifest is restored even when verification fails. The build
+emits the artifact and its complete provenance in `build/`.
 
 ## Example Apps
 

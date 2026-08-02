@@ -1,0 +1,197 @@
+diff --git a/src/Command.zig b/src/Command.zig
+--- a/src/Command.zig
++++ b/src/Command.zig
+@@ -465,7 +465,7 @@ fn setupFd(src: File.Handle, target: i32) !void {
+             // this.
+             _ = try PosixCall.f(linux.dup3, .{ src, target, 0 });
+         },
+-        .freebsd, .ios, .macos => {
++        .freebsd, .ios, .macos, .maccatalyst => {
+             // Mac doesn't support dup3 so we use dup2. We purposely clear
+             // CLO_ON_EXEC for this fd.
+             const flags = try PosixCall.f(posix.system.fcntl, .{ src, posix.F.GETFD });
+diff --git a/src/build/Config.zig b/src/build/Config.zig
+--- a/src/build/Config.zig
++++ b/src/build/Config.zig
+@@ -187,7 +187,7 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
+         "Build with Sentry crash reporting. Default for macOS is true, false for any other system.",
+     ) orelse sentry: {
+         switch (target.result.os.tag) {
+-            .macos, .ios => break :sentry true,
++            .macos, .ios, .maccatalyst => break :sentry true,
+ 
+             // Note its false for linux because the crash reports on Linux
+             // don't have much useful information.
+@@ -236,7 +236,7 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
+         "i18n",
+         "Enables gettext-based internationalization. Enabled by default only for macOS, and other Unix-like systems like Linux and FreeBSD when using glibc.",
+     ) orelse switch (target.result.os.tag) {
+-        .macos, .ios => true,
++        .macos, .ios, .maccatalyst => true,
+         .linux, .freebsd => target.result.isGnuLibC(),
+         else => false,
+     };
+@@ -709,7 +709,7 @@ pub fn osVersionMin(tag: std.Target.Os.Tag) ?std.Target.Query.OsVersion {
+         } },
+ 
+         // iOS 17 picked arbitrarily
+-        .ios => .{ .semver = .{
++        .ios, .maccatalyst => .{ .semver = .{
+             .major = 16,
+             .minor = 0,
+             .patch = 0,
+diff --git a/src/build/MetallibStep.zig b/src/build/MetallibStep.zig
+--- a/src/build/MetallibStep.zig
++++ b/src/build/MetallibStep.zig
+@@ -30,6 +30,7 @@ pub fn create(b: *std.Build, opts: Options) ?*MetallibStep {
+             .simulator => "iphoneos",
+             else => "iphoneos",
+         },
++        .maccatalyst => "iphoneos",
+         else => return null,
+     };
+     const platform_version_arg = switch (opts.target.result.os.tag) {
+@@ -38,6 +39,7 @@ pub fn create(b: *std.Build, opts: Options) ?*MetallibStep {
+             .simulator => "-mios-simulator-version-min",
+             else => "-mios-version-min",
+         },
++        .maccatalyst => "-mios-version-min",
+         else => null,
+     };
+ 
+@@ -48,6 +50,7 @@ pub fn create(b: *std.Build, opts: Options) ?*MetallibStep {
+     else switch (opts.target.result.os.tag) {
+         .macos => "10.14",
+         .ios => "11.0",
++        .maccatalyst => "16.0",
+         else => unreachable,
+     };
+ 
+diff --git a/src/config/theme.zig b/src/config/theme.zig
+--- a/src/config/theme.zig
++++ b/src/config/theme.zig
+@@ -41,7 +41,7 @@ pub const Location = enum {
+                     // error set since some platforms don't support some
+                     // error types.
+                     const Error = @TypeOf(err) || switch (builtin.os.tag) {
+-                        .ios => error{BufferTooSmall},
++                        .ios, .maccatalyst => error{BufferTooSmall},
+                         else => error{},
+                     };
+ 
+diff --git a/src/input/keycodes.zig b/src/input/keycodes.zig
+--- a/src/input/keycodes.zig
++++ b/src/input/keycodes.zig
+@@ -9,7 +9,7 @@ const Key = @import("key.zig").Key;
+ /// The full list of entries for the current platform.
+ pub const entries: []const Entry = entries: {
+     const native_idx = switch (builtin.os.tag) {
+-        .ios, .macos => 4, // mac
++        .ios, .macos, .maccatalyst => 4, // mac
+         .windows => 3, // win
+         .freebsd, .linux => 2, // xkb
+         else => @compileError("unsupported platform"),
+diff --git a/src/os/desktop.zig b/src/os/desktop.zig
+--- a/src/os/desktop.zig
++++ b/src/os/desktop.zig
+@@ -61,7 +61,7 @@ pub fn launchedFromDesktop() bool {
+         .windows => false,
+ 
+         // iPhone/iPad is always launched from the "desktop"
+-        .ios => true,
++        .ios, .maccatalyst => true,
+ 
+         else => @compileError("unsupported platform"),
+     };
+diff --git a/src/os/homedir.zig b/src/os/homedir.zig
+--- a/src/os/homedir.zig
++++ b/src/os/homedir.zig
+@@ -17,7 +17,7 @@ pub inline fn home(environ_map: *const std.process.Environ.Map, buf: []u8) !?[]c
+         .windows => homeWindows(environ_map, buf) catch return error.BufferTooSmall,
+ 
+         // iOS doesn't have a user-writable home directory
+-        .ios => null,
++        .ios, .maccatalyst => null,
+ 
+         else => @compileError("unimplemented"),
+     };
+@@ -105,7 +105,7 @@ pub fn expandHome(environ_map: *const std.process.Environ.Map, path: []const u8,
+         .windows => return path,
+ 
+         // iOS doesn't have a user-writable home directory
+-        .ios => return path,
++        .ios, .maccatalyst => return path,
+ 
+         else => @compileError("unimplemented"),
+     };
+diff --git a/src/os/open.zig b/src/os/open.zig
+--- a/src/os/open.zig
++++ b/src/os/open.zig
+@@ -26,7 +26,7 @@ pub fn open(
+             .text => .{ .argv = &.{ "open", "-t", url } },
+             .html, .unknown => .{ .argv = &.{ "open", url } },
+         },
+-        .ios => return error.Unimplemented,
++        .ios, .maccatalyst => return error.Unimplemented,
+         else => @compileError("unsupported OS"),
+     };
+     // Ignore anything from stdout. This must be set before spawning the
+diff --git a/src/pty.zig b/src/pty.zig
+--- a/src/pty.zig
++++ b/src/pty.zig
+@@ -18,7 +18,7 @@ pub const winsize = extern struct {
+ 
+ pub const Pty = switch (builtin.os.tag) {
+     .windows => WindowsPty,
+-    .ios => NullPty,
++    .ios, .maccatalyst => NullPty,
+     else => PosixPty,
+ };
+ 
+diff --git a/src/renderer/Metal.zig b/src/renderer/Metal.zig
+--- a/src/renderer/Metal.zig
++++ b/src/renderer/Metal.zig
+@@ -66,7 +66,7 @@ autorelease_pool: ?*objc.AutoreleasePool = null,
+ 
+ pub fn init(alloc: Allocator, opts: rendererpkg.Options) !Metal {
+     comptime switch (builtin.os.tag) {
+-        .macos, .ios => {},
++        .macos, .ios, .maccatalyst => {},
+         else => @compileError("unsupported platform for Metal"),
+     };
+ 
+@@ -81,6 +81,6 @@ pub fn init(alloc: Allocator, opts: rendererpkg.Options) !Metal {
+     // Grab metadata about the device.
+     const default_storage_mode: mtl.MTLResourceOptions.StorageMode = switch (comptime builtin.os.tag) {
+         // manage mode is not supported by iOS
+-        .ios => .shared,
++        .ios, .maccatalyst => .shared,
+         else => if (device.getProperty(bool, "hasUnifiedMemory")) .shared else .managed,
+     };
+@@ -91,7 +91,7 @@ pub fn init(alloc: Allocator, opts: rendererpkg.Options) !Metal {
+     // true. Keep buffer storage unchanged, but choose texture storage from the
+     // Metal GPU family as Apple recommends for CPU-updated textures.
+     const default_texture_storage_mode: mtl.MTLResourceOptions.StorageMode = switch (comptime builtin.os.tag) {
+-        .ios => .shared,
++        .ios, .maccatalyst => .shared,
+         .macos => if (device.msgSend(
+             bool,
+             objc.sel("supportsFamily:"),
+@@ -142,7 +142,7 @@ pub fn init(alloc: Allocator, opts: rendererpkg.Options) !Metal {
+             info.view.setProperty("wantsLayer", true);
+         },
+ 
+-        .ios => {
++        .ios, .maccatalyst => {
+             const view_layer = objc.Object.fromId(info.view.getProperty(?*anyopaque, "layer"));
+             view_layer.msgSend(void, objc.sel("addSublayer:"), .{layer.layer.value});
+         },
+@@ -457,7 +457,7 @@ fn chooseDevice() error{NoMetalDevice}!objc.Object {
+                     device.getProperty(bool, "isLowPower")) break;
+             }
+         },
+-        .ios => {
++        .ios, .maccatalyst => {
+             chosen_device = objc.Object.fromId(mtl.MTLCreateSystemDefaultDevice());
+         },
+         else => @compileError("unsupported target for Metal"),

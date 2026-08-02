@@ -71,6 +71,7 @@ ZIG_BUILD_COMMAND=(
     -Dsentry=false
     -Dcustom-shaders=false
     -Dinspector=false
+    -Di18n=false
     -Dtarget="$ZIG_TARGET"
 )
 
@@ -82,6 +83,22 @@ if [ -n "$ZIG_BUILD_EXTRA_ARGS" ]; then
     # shellcheck disable=SC2206
     EXTRA_ARGS=($ZIG_BUILD_EXTRA_ARGS)
     ZIG_BUILD_COMMAND+=("${EXTRA_ARGS[@]}")
+fi
+
+if [[ "$ZIG_TARGET" == *maccatalyst* ]]; then
+    # Zig 0.16 introduced a dedicated Mac Catalyst OS tag after the pinned
+    # libxev commit was published. Fetch the checksum-locked dependency first,
+    # then apply our narrow Darwin-allowlist compatibility patch before the
+    # compiler evaluates libxev for this target.
+    (
+        cd "$SOURCE_DIR"
+        env \
+            CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR" \
+            ZIG_GLOBAL_CACHE_DIR="$GLOBAL_CACHE_DIR" \
+            ZIG_LOCAL_CACHE_DIR="$LOCAL_CACHE_DIR" \
+            "${ZIG_BUILD_COMMAND[@]}" --fetch=needed
+    )
+    "$ROOT_DIR/Patches/ghostty/0013-libxev-maccatalyst.sh" "$SOURCE_DIR"
 fi
 
 (

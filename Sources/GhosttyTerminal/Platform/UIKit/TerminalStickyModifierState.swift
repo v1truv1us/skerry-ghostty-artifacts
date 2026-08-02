@@ -49,6 +49,17 @@
             return mods
         }
 
+        /// Command is also the explicit local-link modifier for touch input.
+        /// Consume only its one-shot state: a user may have armed Ctrl/Option
+        /// for the next key, and tapping a link must not silently discard it.
+        func consumeCommandForPointerLinkActivation() -> Bool {
+            guard command != .inactive else { return false }
+            guard command == .armed else { return true }
+            command = .inactive
+            onChange?()
+            return true
+        }
+
         var hasActiveModifiers: Bool {
             ctrl != .inactive || alt != .inactive || command != .inactive
         }

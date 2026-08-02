@@ -71,7 +71,9 @@ text = shared_path.read_text()
 # Gate glslang — wrap with custom_shaders check
 text = text.replace(
     '    // Glslang\n    if (b.lazyDependency("glslang", .{',
-    '    // Glslang — only needed for custom shaders\n    if (self.config.custom_shaders) if (b.lazyDependency("glslang", .{',
+    '    // Glslang — only needed for custom shaders\n'
+    '    if (self.config.custom_shaders) {\n'
+    '        if (b.lazyDependency("glslang", .{',
 )
 # Close the extra if at end of glslang block
 text = text.replace(
@@ -81,6 +83,7 @@ text = text.replace(
                 glslang_dep.artifact("glslang").getEmittedBin(),
             );
         }
+        }
     }
 
     // Spirv-cross""",
@@ -90,7 +93,29 @@ text = text.replace(
                 glslang_dep.artifact("glslang").getEmittedBin(),
             );
         }
-    };
+        }
+    }
+
+    // Spirv-cross""",
+)
+text = text.replace(
+    """            step.root_module.linkLibrary(glslang_dep.artifact("glslang"));
+            try static_libs.append(
+                b.allocator,
+                glslang_dep.artifact("glslang").getEmittedBin(),
+            );
+        }
+    }
+
+    // Spirv-cross""",
+    """            step.root_module.linkLibrary(glslang_dep.artifact("glslang"));
+            try static_libs.append(
+                b.allocator,
+                glslang_dep.artifact("glslang").getEmittedBin(),
+            );
+        }
+        }
+    }
 
     // Spirv-cross""",
 )
@@ -98,7 +123,9 @@ text = text.replace(
 # Gate spirv-cross — wrap with custom_shaders check
 text = text.replace(
     '    // Spirv-cross\n    if (b.lazyDependency("spirv_cross", .{',
-    '    // Spirv-cross — only needed for custom shaders\n    if (self.config.custom_shaders) if (b.lazyDependency("spirv_cross", .{',
+    '    // Spirv-cross — only needed for custom shaders\n'
+    '    if (self.config.custom_shaders) {\n'
+    '        if (b.lazyDependency("spirv_cross", .{',
 )
 text = text.replace(
     """            step.linkLibrary(spirv_cross_dep.artifact("spirv_cross"));
@@ -106,6 +133,7 @@ text = text.replace(
                 b.allocator,
                 spirv_cross_dep.artifact("spirv_cross").getEmittedBin(),
             );
+        }
         }
     }
 
@@ -116,10 +144,35 @@ text = text.replace(
                 spirv_cross_dep.artifact("spirv_cross").getEmittedBin(),
             );
         }
-    };
+        }
+    }
 
     // Sentry""",
 )
+text = text.replace(
+    """            step.root_module.linkLibrary(spirv_cross_dep.artifact("spirv_cross"));
+            try static_libs.append(
+                b.allocator,
+                spirv_cross_dep.artifact("spirv_cross").getEmittedBin(),
+            );
+        }
+    }
+
+    // Sentry""",
+    """            step.root_module.linkLibrary(spirv_cross_dep.artifact("spirv_cross"));
+            try static_libs.append(
+                b.allocator,
+                spirv_cross_dep.artifact("spirv_cross").getEmittedBin(),
+            );
+        }
+        }
+    }
+
+    // Sentry""",
+)
+
+if text.count("if (self.config.custom_shaders) {") != 2:
+    raise SystemExit("[-] failed to gate both custom shader dependencies")
 
 shared_path.write_text(text)
 print("[+] patched SharedDeps.zig")

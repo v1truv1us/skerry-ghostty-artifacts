@@ -1,0 +1,37 @@
+diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
+--- a/src/build/SharedDeps.zig
++++ b/src/build/SharedDeps.zig
+@@ -584,15 +584,21 @@ pub fn add(
+         // Apple platforms do not include libc libintl so we bundle it.
+-        // This is LGPL but since our source code is open source we are
+-        // in compliance with the LGPL since end users can modify this
+-        // build script to replace the bundled libintl with their own.
+-        if (b.lazyDependency("libintl", .{
+-            .target = target,
+-            .optimize = optimize,
+-        })) |libintl_dep| {
+-            step.root_module.linkLibrary(libintl_dep.artifact("intl"));
+-            try static_libs.append(
+-                b.allocator,
+-                libintl_dep.artifact("intl").getEmittedBin(),
+-            );
++        // A host-managed libghostty build does not ship Ghostty's translation
++        // catalogs, so its build sets i18n=false and must not absorb libintl
++        // into the distributable static archive. Keep the existing desktop
++        // behavior when i18n is enabled.
++        if (self.config.i18n) {
++            // This is LGPL but since our source code is open source we are
++            // in compliance with the LGPL since end users can modify this
++            // build script to replace the bundled libintl with their own.
++            if (b.lazyDependency("libintl", .{
++                .target = target,
++                .optimize = optimize,
++            })) |libintl_dep| {
++                step.root_module.linkLibrary(libintl_dep.artifact("intl"));
++                try static_libs.append(
++                    b.allocator,
++                    libintl_dep.artifact("intl").getEmittedBin(),
++                );
++            }
+         }
+     }
