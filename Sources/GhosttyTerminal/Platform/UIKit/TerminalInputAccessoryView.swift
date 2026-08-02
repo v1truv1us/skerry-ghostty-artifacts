@@ -38,9 +38,11 @@
         private let navScrollView = UIScrollView()
         private let navStackView = UIStackView()
         // Row farthest from the keyboard: modifiers, Esc, Tab, Interrupt,
-        // Paste — used less often than navigation, per owner confirmation.
+        // Paste, or the mode-switched extended keys. Swapping this row rather
+        // than adding a third one preserves the compact terminal viewport.
         private let commandScrollView = UIScrollView()
         private let commandStackView = UIStackView()
+        private var showsExtendedKeys = false
         private var blurLeadingConstraint: NSLayoutConstraint?
         private var blurTrailingConstraint: NSLayoutConstraint?
         private var blurTopConstraint: NSLayoutConstraint?
@@ -55,6 +57,20 @@
             title: "Interrupt (Control-C)",
             systemImage: "stop.circle",
             key: .interrupt
+        )
+        private lazy var moreKeysButton: AccessoryButton = {
+            let button = makeAccessoryButton { [weak self] in
+                self?.toggleExtendedKeyMode()
+            }
+            button.accessibilityLabel = "More Keys"
+            button.accessibilityHint = "Shows Shift, Insert, Forward Delete, and function keys."
+            setTextTitle("Fn", on: button)
+            return button
+        }()
+        private lazy var shiftButton = makeModifierButton(
+            title: "Shift",
+            systemImage: "shift",
+            modifier: .shift
         )
         private lazy var ctrlButton = makeModifierButton(
             title: "Control",
@@ -80,6 +96,19 @@
             systemImage: "arrow.right.to.line",
             key: .tab
         )
+        private lazy var insertButton = makeKeyButton(
+            title: "Ins",
+            accessibilityLabel: "Insert",
+            key: .insert
+        )
+        private lazy var deleteForwardButton = makeKeyButton(
+            title: "Del",
+            accessibilityLabel: "Forward Delete",
+            key: .deleteForward
+        )
+        private lazy var functionButtons: [AccessoryButton] = (1 ... 12).map { number in
+            makeKeyButton(title: "F\(number)", key: .function(number))
+        }
         private lazy var homeButton = makeKeyButton(
             title: "Home",
             key: .home
@@ -125,6 +154,7 @@
         )
         private var customActionButtons: [AccessoryButton] = []
         private lazy var customActionDivider = makeDivider()
+        private lazy var commandDivider = makeDivider()
 
         private lazy var symbolButtons: [AccessoryButton] = Self.symbols.map { symbol in
             makeKeyButton(title: symbol, key: .symbol(symbol))
@@ -140,6 +170,7 @@
         }()
 
         private lazy var modifierButtons: [(TerminalStickyModifierState.Modifier, AccessoryButton)] = [
+            (.shift, shiftButton),
             (.ctrl, ctrlButton),
             (.alt, altButton),
             (.command, cmdButton),
@@ -200,13 +231,23 @@
         func refreshContent() {
             refreshCustomActionButtons()
             let hasMarkedText = terminalView?.inputHandler.hasMarkedText ?? false
+            let shiftActivation = terminalView?.stickyModifiers.shift ?? .inactive
             let ctrlActivation = terminalView?.stickyModifiers.ctrl ?? .inactive
             let altActivation = terminalView?.stickyModifiers.alt ?? .inactive
             let cmdActivation = terminalView?.stickyModifiers.command ?? .inactive
 
             interruptButton.applyRegularStyle(style)
+            moreKeysButton.applyModifierStyle(
+                showsExtendedKeys ? .armed : .inactive,
+                isDisabled: false,
+                style: style
+            )
+            moreKeysButton.accessibilityValue = showsExtendedKeys ? "Expanded" : "Collapsed"
             escapeButton.applyRegularStyle(style)
             tabButton.applyRegularStyle(style)
+            insertButton.applyRegularStyle(style)
+            deleteForwardButton.applyRegularStyle(style)
+            functionButtons.forEach { $0.applyRegularStyle(style) }
             homeButton.applyRegularStyle(style)
             pageUpButton.applyRegularStyle(style)
             endButton.applyRegularStyle(style)
@@ -227,6 +268,7 @@
             hideKeyboardButton.applyRegularStyle(style)
             symbolButtons.forEach { $0.applyRegularStyle(style) }
 
+            shiftButton.applyModifierStyle(shiftActivation, isDisabled: hasMarkedText, style: style)
             ctrlButton.applyModifierStyle(ctrlActivation, isDisabled: hasMarkedText, style: style)
             altButton.applyModifierStyle(altActivation, isDisabled: hasMarkedText, style: style)
             cmdButton.applyModifierStyle(cmdActivation, isDisabled: hasMarkedText, style: style)
@@ -298,17 +340,7 @@
                 hideKeyboardButton.centerYAnchor.constraint(equalTo: navScrollView.centerYAnchor),
             ])
 
-            addArrangedViews([
-                interruptButton,
-                escapeButton,
-                ctrlButton,
-                altButton,
-                cmdButton,
-                makeDivider(),
-                tabButton,
-            ] + symbolButtons + [
-                pasteButton,
-            ], to: commandStackView)
+            rebuildCommandRow()
 
             // Navigation cluster first (Home/PgUp bracket the arrows,
             // PgDn/End bracket the other side — mirrors a physical extended
@@ -379,6 +411,47 @@
             }
         }
 
+        private func toggleExtendedKeyMode() {
+            showsExtendedKeys.toggle()
+            rebuildCommandRow()
+            commandScrollView.setContentOffset(.zero, animated: false)
+            refreshContent()
+
+            let firstRevealedControl = showsExtendedKeys ? shiftButton : interruptButton
+            UIAccessibility.post(notification: .layoutChanged, argument: firstRevealedControl)
+        }
+
+        private func rebuildCommandRow() {
+            for view in commandStackView.arrangedSubviews {
+                commandStackView.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+
+            let views: [UIView]
+            if showsExtendedKeys {
+                views = [
+                    moreKeysButton,
+                    shiftButton,
+                    insertButton,
+                    deleteForwardButton,
+                ] + functionButtons
+            } else {
+                views = [
+                    interruptButton,
+                    escapeButton,
+                    moreKeysButton,
+                    ctrlButton,
+                    altButton,
+                    cmdButton,
+                    commandDivider,
+                    tabButton,
+                ] + symbolButtons + [
+                    pasteButton,
+                ]
+            }
+            addArrangedViews(views, to: commandStackView)
+        }
+
         private func addArrangedViews(_ views: [UIView], to stackView: UIStackView) {
             views.forEach { stackView.addArrangedSubview($0) }
         }
@@ -422,20 +495,24 @@
             if let systemImage {
                 button.setSystemImage(named: systemImage)
             } else {
-                var configuration = UIButton.Configuration.plain()
-                configuration.baseForegroundColor = .label
-                configuration.title = title
-                configuration.contentInsets = .zero
-                configuration.attributedTitle = AttributedString(
-                    title,
-                    attributes: AttributeContainer([
-                        .font: UIFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
-                    ])
-                )
-                button.configuration = configuration
+                setTextTitle(title, on: button)
             }
 
             return button
+        }
+
+        private func setTextTitle(_ title: String, on button: AccessoryButton) {
+            var configuration = UIButton.Configuration.plain()
+            configuration.baseForegroundColor = .label
+            configuration.title = title
+            configuration.contentInsets = .zero
+            configuration.attributedTitle = AttributedString(
+                title,
+                attributes: AttributeContainer([
+                    .font: UIFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
+                ])
+            )
+            button.configuration = configuration
         }
 
         private func makeAccessoryButton(handler: @escaping () -> Void) -> AccessoryButton {

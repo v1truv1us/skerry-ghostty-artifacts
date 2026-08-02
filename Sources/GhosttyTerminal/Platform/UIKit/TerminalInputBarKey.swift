@@ -8,6 +8,8 @@
         case esc
         case interrupt
         case tab
+        case insert
+        case deleteForward
         case end
         case home
         case pageUp
@@ -16,6 +18,7 @@
         case arrowUp
         case arrowDown
         case arrowRight
+        case function(Int)
         case symbol(String)
         case paste
     }

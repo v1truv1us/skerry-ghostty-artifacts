@@ -40,6 +40,14 @@
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x2B, additionalMods: mods)
 
+            case .insert:
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(usage: 0x49, additionalMods: mods)
+
+            case .deleteForward:
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(usage: 0x4C, additionalMods: mods)
+
             case .end:
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x4D, additionalMods: mods)
@@ -71,6 +79,14 @@
             case .arrowDown:
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x51, additionalMods: mods)
+
+            case let .function(number):
+                guard 1 ... 12 ~= number else { return }
+                let mods = stickyModifiers.consumeForNextKey()
+                sendSyntheticKey(
+                    usage: 0x3A + UInt16(number - 1),
+                    additionalMods: mods
+                )
             }
         }
 

@@ -67,6 +67,49 @@ struct TerminalHardwareKeyRouterTests {
     }
 
     @Test
+    func routesUIKitExtendedAccessoryKeysDirectlyForInMemoryBackends() {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let expectedSequences: [(usage: UInt16, sequence: String)] = [
+            (0x49, "\u{1B}[2~"),
+            (0x4C, "\u{1B}[3~"),
+            (0x3A, "\u{1B}OP"),
+            (0x3B, "\u{1B}OQ"),
+            (0x3C, "\u{1B}OR"),
+            (0x3D, "\u{1B}OS"),
+            (0x3E, "\u{1B}[15~"),
+            (0x3F, "\u{1B}[17~"),
+            (0x40, "\u{1B}[18~"),
+            (0x41, "\u{1B}[19~"),
+            (0x42, "\u{1B}[20~"),
+            (0x43, "\u{1B}[21~"),
+            (0x44, "\u{1B}[23~"),
+            (0x45, "\u{1B}[24~"),
+        ]
+
+        for expected in expectedSequences {
+            #expect(
+                TerminalHardwareKeyRouter.routeUIKit(
+                    usage: expected.usage,
+                    backend: .inMemory(session)
+                ) == .data(Data(expected.sequence.utf8))
+            )
+        }
+    }
+
+    @Test
+    func routesStickyShiftTabDirectlyForInMemoryBackends() {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x2B,
+                backend: .inMemory(session),
+                modifiers: .shift
+            ) == .data(Data("\u{1B}[Z".utf8))
+        )
+    }
+
+    @Test
     func routesUIKitKeysToGhosttyForExecBackends() {
         #expect(
             TerminalHardwareKeyRouter.routeUIKit(
@@ -105,13 +148,6 @@ struct TerminalHardwareKeyRouterTests {
                 backend: .inMemory(session),
                 modifiers: .super_
             ) == .ghostty(GHOSTTY_KEY_ESCAPE)
-        )
-        #expect(
-            TerminalHardwareKeyRouter.routeUIKit(
-                usage: 0x2B,
-                backend: .inMemory(session),
-                modifiers: .shift
-            ) == .ghostty(GHOSTTY_KEY_TAB)
         )
         #expect(
             TerminalHardwareKeyRouter.routeUIKit(

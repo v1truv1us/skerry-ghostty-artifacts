@@ -167,6 +167,75 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertEqual(recorder.data, Data([0x60, 0x7E, 0x7C, 0x5C]))
     }
 
+    /// iOS's software keyboard has no Insert, forward Delete, or function
+    /// keys. They must be reachable without growing the compact two-row bar
+    /// back over the terminal viewport.
+    func testMoreKeysModeExposesExtendedKeysWithoutGrowingActionBar() throws {
+        let inputBar = TerminalInputBar()
+        let initialHeight = inputBar.intrinsicContentSize.height
+
+        XCTAssertNil(findButton(label: "Shift", in: inputBar))
+        try tapButton(label: "More Keys", in: inputBar)
+
+        for label in ["Shift", "Insert", "Forward Delete"] + (1 ... 12).map({ "F\($0)" }) {
+            XCTAssertNotNil(findButton(label: label, in: inputBar), "Missing \(label)")
+        }
+        XCTAssertEqual(inputBar.intrinsicContentSize.height, initialHeight, accuracy: 0.5)
+        XCTAssertEqual(findButton(label: "More Keys", in: inputBar)?.accessibilityValue, "Expanded")
+
+        try tapButton(label: "More Keys", in: inputBar)
+        XCTAssertNotNil(findButton(label: "Interrupt (Control-C)", in: inputBar))
+        XCTAssertNil(findButton(label: "F1", in: inputBar))
+        XCTAssertEqual(findButton(label: "More Keys", in: inputBar)?.accessibilityValue, "Collapsed")
+    }
+
+    func testExtendedAccessoryKeysSendRawBytesWithoutRenderedSurface() throws {
+        let recorder = TerminalInputRecorder()
+        let session = InMemoryTerminalSession(
+            write: { recorder.append($0) },
+            resize: { _ in }
+        )
+        let terminal = UITerminalView(frame: .zero)
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        terminal.isResponderEligible = true
+        let inputBar = TerminalInputBar(terminalView: terminal)
+
+        try tapButton(label: "More Keys", in: inputBar)
+        try tapButton(label: "Insert", in: inputBar)
+        try tapButton(label: "Forward Delete", in: inputBar)
+        for number in 1 ... 12 {
+            try tapButton(label: "F\(number)", in: inputBar)
+        }
+
+        let expected = "\u{1B}[2~\u{1B}[3~"
+            + "\u{1B}OP\u{1B}OQ\u{1B}OR\u{1B}OS"
+            + "\u{1B}[15~\u{1B}[17~\u{1B}[18~\u{1B}[19~"
+            + "\u{1B}[20~\u{1B}[21~\u{1B}[23~\u{1B}[24~"
+        XCTAssertEqual(recorder.data, Data(expected.utf8))
+    }
+
+    /// Switching back to the command row must not consume one-shot Shift;
+    /// otherwise Backtab remains inaccessible even after exposing Shift.
+    func testShiftSurvivesMoreKeysToggleAndSendsBacktabWithoutRenderedSurface() throws {
+        let recorder = TerminalInputRecorder()
+        let session = InMemoryTerminalSession(
+            write: { recorder.append($0) },
+            resize: { _ in }
+        )
+        let terminal = UITerminalView(frame: .zero)
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        terminal.isResponderEligible = true
+        let inputBar = TerminalInputBar(terminalView: terminal)
+
+        try tapButton(label: "More Keys", in: inputBar)
+        try tapButton(label: "Shift", in: inputBar)
+        try tapButton(label: "More Keys", in: inputBar)
+        try tapButton(label: "Tab", in: inputBar)
+
+        XCTAssertEqual(recorder.data, Data("\u{1B}[Z".utf8))
+        XCTAssertEqual(terminal.stickyActivation(for: .shift), .inactive)
+    }
+
     func testHostManagedInputBarRejectsCommandsForAnIneligibleTarget() throws {
         let terminal = UITerminalView(frame: .zero)
         var actionCount = 0

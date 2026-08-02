@@ -37,9 +37,17 @@ enum TerminalHardwareKeyRouter {
         backend: TerminalSessionBackend,
         modifiers: TerminalInputModifiers
     ) -> TerminalHardwareKeyDelivery {
+        if case .inMemory = backend,
+           modifiers == .shift,
+           usage == 0x2B
+        {
+            return .data(Data("\u{1B}[Z".utf8))
+        }
+
         // Raw host-managed bytes only represent the unmodified control key.
-        // Modified synthetic accessory keys need a real Ghostty key event so
-        // the backend can emit the correct escape sequence for those modifiers.
+        // Shift-Tab is the one fixed modified sequence above. Other modified
+        // synthetic accessory keys need a real Ghostty key event so the
+        // backend can emit the correct mode-aware escape sequence.
         guard modifiers.isEmpty else {
             return .ghostty(ghosttyKeyForUIKit(usage: usage))
         }
@@ -67,6 +75,8 @@ enum TerminalHardwareKeyRouter {
             Data([0x7F])
         case 0x2B:
             Data([0x09])
+        case 0x49:
+            Data("\u{1B}[2~".utf8)
         case 0x4C:
             Data("\u{1B}[3~".utf8)
         case 0x4A:
@@ -85,6 +95,30 @@ enum TerminalHardwareKeyRouter {
             Data("\u{1B}[B".utf8)
         case 0x52:
             Data("\u{1B}[A".utf8)
+        case 0x3A:
+            Data("\u{1B}OP".utf8)
+        case 0x3B:
+            Data("\u{1B}OQ".utf8)
+        case 0x3C:
+            Data("\u{1B}OR".utf8)
+        case 0x3D:
+            Data("\u{1B}OS".utf8)
+        case 0x3E:
+            Data("\u{1B}[15~".utf8)
+        case 0x3F:
+            Data("\u{1B}[17~".utf8)
+        case 0x40:
+            Data("\u{1B}[18~".utf8)
+        case 0x41:
+            Data("\u{1B}[19~".utf8)
+        case 0x42:
+            Data("\u{1B}[20~".utf8)
+        case 0x43:
+            Data("\u{1B}[21~".utf8)
+        case 0x44:
+            Data("\u{1B}[23~".utf8)
+        case 0x45:
+            Data("\u{1B}[24~".utf8)
         default:
             nil
         }
