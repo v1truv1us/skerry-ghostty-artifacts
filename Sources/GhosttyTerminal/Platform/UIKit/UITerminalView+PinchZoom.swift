@@ -30,9 +30,20 @@
                 let steps = Int(delta / Self.scaleStepThreshold)
                 guard steps != 0 else { return }
 
+                let requested = Self.validatedFontSize(currentFontSize + Float(steps))
+                guard requested != currentFontSize else {
+                    // At the min/max clamp the gesture keeps travelling while
+                    // the font cannot follow; resetting the baseline prevents
+                    // dead travel the user would have to pinch back through.
+                    lastPinchScale = gesture.scale
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    return
+                }
+
                 lastPinchScale += CGFloat(steps) * Self.scaleStepThreshold
                 pinchChangedFontSize = true
-                applyFontSize(currentFontSize + Float(steps), publishesChange: true)
+                UISelectionFeedbackGenerator().selectionChanged()
+                applyFontSize(requested, publishesChange: true)
 
             case .ended, .cancelled, .failed:
                 lastPinchScale = 1.0

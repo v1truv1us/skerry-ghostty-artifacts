@@ -65,9 +65,10 @@
             static let minFontSize: Float = 10
             static let maxFontSize: Float = 64
         #endif
-        #if targetEnvironment(macCatalyst)
-            var activePointerButton: ghostty_input_mouse_button_e?
-        #endif
+        // Tracks a pressed indirect-pointer (trackpad) button across the
+        // touch phases so the release reports the same button. Used by
+        // Catalyst's full pointer path and iPadOS's secondary-button path.
+        var activePointerButton: ghostty_input_mouse_button_e?
         var hardwareKeyHandled = false
         let touchScrollMultiplier: CGFloat = 3.0
         var touchScrollLineRemainder: CGFloat = 0
@@ -138,6 +139,15 @@
                 guard !isResponderEligible else { return }
                 resignFirstResponder()
             }
+        }
+
+        /// VoiceOver sees the terminal as one direct-interaction element:
+        /// focusable, and touches pass straight through for typing. Terminal
+        /// content itself is never exposed to assistive technology — the
+        /// raw-bytes invariant forbids decoding the PTY, so the label stays
+        /// content-free. Hosts may relabel it (e.g. per-pane context).
+        public var terminalAccessibilityLabel = "Terminal" {
+            didSet { accessibilityLabel = terminalAccessibilityLabel }
         }
 
         #if !targetEnvironment(macCatalyst)
@@ -231,6 +241,9 @@
             backgroundColor = .clear
             isOpaque = false
             isUserInteractionEnabled = true
+            isAccessibilityElement = true
+            accessibilityLabel = terminalAccessibilityLabel
+            accessibilityTraits = [.allowsDirectInteraction]
             updateDisplayScale()
 
             core.isAttached = { [weak self] in self?.window != nil }

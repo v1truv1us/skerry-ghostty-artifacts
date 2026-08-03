@@ -23,6 +23,19 @@
             }
         }
 
+        // A handle anchored on the first/last row places its knob outside the
+        // terminal's bounds; default hit-testing never routes those touches to
+        // the handle, so the edge handles would draw but be ungrabbable.
+        override public func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            if super.point(inside: point, with: event) { return true }
+            for handle in [startSelectionHandle, endSelectionHandle] where handle.superview === self {
+                if handle.point(inside: convert(point, to: handle), with: event) {
+                    return true
+                }
+            }
+            return false
+        }
+
         @discardableResult
         func synchronizeSelectionHandlesWithSurface() -> Bool {
             guard ownsTerminalSelectionRange else { return false }
@@ -35,6 +48,7 @@
             selectionEndPoint = range.trailing
             synchronizeSelectionHandle(startSelectionHandle, with: range.leading)
             synchronizeSelectionHandle(endSelectionHandle, with: range.trailing)
+            updateAccessibilityElementForSelectionHandles()
             return range.leading != nil || range.trailing != nil
         }
 
@@ -45,6 +59,15 @@
             selectionStartPoint = nil
             selectionEndPoint = nil
             selectionHandleDragTouchOffset = nil
+            updateAccessibilityElementForSelectionHandles()
+        }
+
+        /// While handles are visible they must stay individually focusable
+        /// (VoiceOver adjust); an accessibility-element parent would swallow
+        /// them, so the terminal element steps aside until they are gone.
+        private func updateAccessibilityElementForSelectionHandles() {
+            isAccessibilityElement = startSelectionHandle.superview == nil
+                && endSelectionHandle.superview == nil
         }
 
         func presentSelectionEditMenu(at point: CGPoint) {
@@ -81,6 +104,9 @@
                 guard let movingPoint = edge == .start ? selectionStartPoint : selectionEndPoint,
                       beginSelectionEndpointDrag(edge: edge)
                 else { return }
+                // Parity with the long-press selection haptic: grabbing a
+                // handle confirms the drag is live.
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 let touch = gesture.location(in: self)
                 selectionHandleDragTouchOffset = CGPoint(
                     x: movingPoint.x - touch.x,

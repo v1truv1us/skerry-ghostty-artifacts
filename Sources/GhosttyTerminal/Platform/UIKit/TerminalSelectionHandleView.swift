@@ -79,6 +79,26 @@
             )
         }
 
+        // The drawn knob is only 20pt wide — far under the 44pt touch floor.
+        // Native handles accept touches across a larger invisible area, so
+        // hit-testing expands to a square around the knob while the drawn
+        // geometry stays exactly on Ghostty's selected-range anchor.
+        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            let knobCenter = CGPoint(
+                x: bounds.midX,
+                y: edge == .start
+                    ? Self.knobDiameter / 2
+                    : Self.stemHeight + Self.knobDiameter / 2
+            )
+            let hitRect = CGRect(
+                x: knobCenter.x - 22,
+                y: knobCenter.y - 22,
+                width: 44,
+                height: 44
+            )
+            return hitRect.contains(point)
+        }
+
         @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
             onPan?(gesture)
         }

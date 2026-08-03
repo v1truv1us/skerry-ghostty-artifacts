@@ -11,7 +11,23 @@
         public private(set) weak var terminalView: UITerminalView?
 
         var style: TerminalInputAccessoryStyle = .default {
-            didSet { refreshContent() }
+            didSet {
+                // UIPasteControl copies its configuration at init, so a style
+                // change rebuilds the control rather than mutating it.
+                pasteControl = makePasteControl()
+                rebuildCommandRow()
+                refreshContent()
+            }
+        }
+
+        /// A hardware keyboard duplicates every key row; slim mode keeps only
+        /// the host's custom actions and Hide Keyboard so the bar stops
+        /// covering terminal output with physical-key duplicates.
+        var isSlimForHardwareKeyboard = false {
+            didSet {
+                guard isSlimForHardwareKeyboard != oldValue else { return }
+                applySlimMode()
+            }
         }
 
         // Read via `Self.` before `super.init()` runs (the frame height
@@ -24,6 +40,9 @@
         private static let contentVerticalInset: CGFloat = 3
         private static var barHeight: CGFloat {
             rowHeight * 2 + interRowSpacing + contentVerticalInset * 2
+        }
+        private static var slimBarHeight: CGFloat {
+            rowHeight + contentVerticalInset * 2
         }
         private let buttonWidth: CGFloat = 44
         private let buttonHeight: CGFloat = 32
@@ -47,6 +66,14 @@
         private var blurTrailingConstraint: NSLayoutConstraint?
         private var blurTopConstraint: NSLayoutConstraint?
         private var blurBottomConstraint: NSLayoutConstraint?
+        private var blurHeightConstraint: NSLayoutConstraint?
+        // Both rows hide their scroll indicators, so edge fades are the only
+        // discoverability signal for off-screen keys (PgDn/End, custom
+        // actions, Paste).
+        private lazy var navLeadingFade = EdgeFadeView(edge: .leading)
+        private lazy var navTrailingFade = EdgeFadeView(edge: .trailing)
+        private lazy var commandLeadingFade = EdgeFadeView(edge: .leading)
+        private lazy var commandTrailingFade = EdgeFadeView(edge: .trailing)
 
         private lazy var escapeButton = makeKeyButton(
             title: "Escape",
@@ -147,11 +174,11 @@
             systemImage: "arrowtriangle.right.fill",
             key: .arrowRight
         )
-        private lazy var pasteButton = makeKeyButton(
-            title: "Paste",
-            systemImage: "doc.on.clipboard",
-            key: .paste
-        )
+        // UIPasteControl instead of a plain button: the tap itself grants
+        // pasteboard access, so reading the pasteboard never triggers the
+        // system paste-permission banner. Its configuration is copied at
+        // init, so a style change rebuilds the control (see style.didSet).
+        private lazy var pasteControl = makePasteControl()
         private var customActionButtons: [AccessoryButton] = []
         private lazy var customActionDivider = makeDivider()
         private lazy var commandDivider = makeDivider()
@@ -256,7 +283,6 @@
             upButton.applyRegularStyle(style)
             downButton.applyRegularStyle(style)
             rightButton.applyRegularStyle(style)
-            pasteButton.applyRegularStyle(style)
             for (button, action) in zip(customActionButtons, terminalView?.inputAccessoryActions ?? []) {
                 button.applyModifierStyle(
                     action.isSelected ? .armed : .inactive,
@@ -268,10 +294,20 @@
             hideKeyboardButton.applyRegularStyle(style)
             symbolButtons.forEach { $0.applyRegularStyle(style) }
 
-            shiftButton.applyModifierStyle(shiftActivation, isDisabled: hasMarkedText, style: style)
-            ctrlButton.applyModifierStyle(ctrlActivation, isDisabled: hasMarkedText, style: style)
-            altButton.applyModifierStyle(altActivation, isDisabled: hasMarkedText, style: style)
-            cmdButton.applyModifierStyle(cmdActivation, isDisabled: hasMarkedText, style: style)
+            let activations = [shiftActivation, ctrlActivation, altActivation, cmdActivation]
+            for ((_, button), activation) in zip(modifierButtons, activations) {
+                button.applyModifierStyle(activation, isDisabled: hasMarkedText, style: style)
+                // Sticky state is otherwise tint-only; VoiceOver must speak
+                // whether a modifier is armed, locked, or off.
+                button.accessibilityValue = switch activation {
+                case .inactive: nil
+                case .armed: "Armed"
+                case .locked: "Locked"
+                }
+                if button.accessibilityHint == nil {
+                    button.accessibilityHint = "Tap to apply to the next key. Double-tap to lock."
+                }
+            }
         }
 
         private func setupViews() {
@@ -290,12 +326,14 @@
             blurTopConstraint = top
             blurBottomConstraint = bottom
 
+            let blurHeight = blurView.heightAnchor.constraint(equalToConstant: Self.barHeight)
+            blurHeightConstraint = blurHeight
             NSLayoutConstraint.activate([
                 leading,
                 trailing,
                 top,
                 bottom,
-                blurView.heightAnchor.constraint(equalToConstant: Self.barHeight),
+                blurHeight,
             ])
 
             rowsStackView.translatesAutoresizingMaskIntoConstraints = false
@@ -330,6 +368,27 @@
             // for.
             setupRow(scrollView: commandScrollView, stackView: commandStackView, in: rowsStackView)
             setupRow(scrollView: navScrollView, stackView: navStackView, in: rowsStackView)
+
+            for (scrollView, leadingFade, trailingFade) in [
+                (navScrollView, navLeadingFade, navTrailingFade),
+                (commandScrollView, commandLeadingFade, commandTrailingFade),
+            ] {
+                leadingFade.translatesAutoresizingMaskIntoConstraints = false
+                trailingFade.translatesAutoresizingMaskIntoConstraints = false
+                // Added after the rows so the fades draw above the buttons.
+                blurView.contentView.addSubview(leadingFade)
+                blurView.contentView.addSubview(trailingFade)
+                NSLayoutConstraint.activate([
+                    leadingFade.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+                    leadingFade.topAnchor.constraint(equalTo: scrollView.topAnchor),
+                    leadingFade.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+                    leadingFade.widthAnchor.constraint(equalToConstant: 24),
+                    trailingFade.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+                    trailingFade.topAnchor.constraint(equalTo: scrollView.topAnchor),
+                    trailingFade.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+                    trailingFade.widthAnchor.constraint(equalToConstant: 24),
+                ])
+            }
 
             // Bottom-align with the nav row (nearest the keyboard) rather than
             // the whole two-row bar's center. navScrollView has no superview
@@ -368,6 +427,7 @@
             scrollView.showsVerticalScrollIndicator = false
             scrollView.alwaysBounceHorizontal = true
             scrollView.clipsToBounds = true
+            scrollView.delegate = self
             container.addArrangedSubview(scrollView)
 
             stackView.translatesAutoresizingMaskIntoConstraints = false
@@ -403,7 +463,7 @@
                 button.setSystemImage(named: imageName)
                 return button
             }
-            customActionDivider.isHidden = customActionButtons.isEmpty
+            customActionDivider.isHidden = isSlimForHardwareKeyboard || customActionButtons.isEmpty
             // Appended after the nav cluster (not inserted at index 0) —
             // see the ordering rationale in setupViews().
             for button in customActionButtons {
@@ -446,7 +506,7 @@
                     commandDivider,
                     tabButton,
                 ] + symbolButtons + [
-                    pasteButton,
+                    pasteControl,
                 ]
             }
             addArrangedViews(views, to: commandStackView)
@@ -524,7 +584,68 @@
         }
 
         private var preferredHeight: CGFloat {
-            Self.preferredHeight(for: Self.barHeight)
+            Self.preferredHeight(for: isSlimForHardwareKeyboard ? Self.slimBarHeight : Self.barHeight)
+        }
+
+        private func applySlimMode() {
+            commandScrollView.isHidden = isSlimForHardwareKeyboard
+            for button in [
+                homeButton, pageUpButton, leftButton, upButton,
+                downButton, rightButton, pageDownButton, endButton,
+            ] {
+                button.isHidden = isSlimForHardwareKeyboard
+            }
+            customActionDivider.isHidden = isSlimForHardwareKeyboard || customActionButtons.isEmpty
+            blurHeightConstraint?.constant = isSlimForHardwareKeyboard
+                ? Self.slimBarHeight
+                : Self.barHeight
+            invalidateIntrinsicContentSize()
+        }
+
+        private func makePasteControl() -> UIPasteControl {
+            let configuration = UIPasteControl.Configuration()
+            configuration.displayMode = .iconOnly
+            configuration.baseForegroundColor = style.regularForeground
+            configuration.baseBackgroundColor = style.regularBackground
+            configuration.cornerStyle = .fixed
+            configuration.cornerRadius = 10
+            let control = UIPasteControl(configuration: configuration)
+            control.addTarget(
+                self,
+                action: #selector(handlePasteControlTapped(_:)),
+                for: .primaryActionTriggered
+            )
+            control.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                control.widthAnchor.constraint(greaterThanOrEqualToConstant: buttonWidth),
+                control.heightAnchor.constraint(equalToConstant: buttonHeight),
+            ])
+            return control
+        }
+
+        @objc private func handlePasteControlTapped(_: UIPasteControl) {
+            eligibleTerminalView?.handlePasteFromPasteControl()
+        }
+
+        public override func layoutSubviews() {
+            super.layoutSubviews()
+            updateScrollFades()
+        }
+
+        private func updateScrollFades() {
+            updateScrollFades(for: navScrollView, leading: navLeadingFade, trailing: navTrailingFade)
+            updateScrollFades(for: commandScrollView, leading: commandLeadingFade, trailing: commandTrailingFade)
+        }
+
+        private func updateScrollFades(for scrollView: UIScrollView, leading: UIView, trailing: UIView) {
+            let overflow = scrollView.contentSize.width - scrollView.bounds.width
+            guard overflow > 1 else {
+                leading.alpha = 0
+                trailing.alpha = 0
+                return
+            }
+            leading.alpha = scrollView.contentOffset.x > 1 ? 1 : 0
+            trailing.alpha = scrollView.contentOffset.x < overflow - 1 ? 1 : 0
         }
 
         private var currentOuterPadding: UIEdgeInsets {
@@ -586,5 +707,52 @@
         // other symbol key here is already one tap away, so those four are
         // the only additions worth surfacing on the bar.
         private static let symbols: [String] = ["`", "~", "|", "\\"]
+
+        /// A horizontal gradient pinned to a row's edge, shown only while
+        /// that edge has off-screen content. Non-interactive so taps fall
+        /// through to the scroll view beneath.
+        private final class EdgeFadeView: UIView {
+            enum Edge { case leading, trailing }
+
+            private let edge: Edge
+
+            init(edge: Edge) {
+                self.edge = edge
+                super.init(frame: .zero)
+                isUserInteractionEnabled = false
+                alpha = 0
+                updateColors()
+            }
+
+            @available(*, unavailable)
+            required init?(coder _: NSCoder) {
+                fatalError("init(coder:) has not been implemented")
+            }
+
+            override class var layerClass: AnyClass { CAGradientLayer.self }
+
+            override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+                super.traitCollectionDidChange(previousTraitCollection)
+                updateColors()
+            }
+
+            private func updateColors() {
+                guard let gradient = layer as? CAGradientLayer else { return }
+                // The bar is a dark-tinted material in every shipped
+                // configuration, so fading toward black reads as the row
+                // dissolving into the bar rather than a hard clip.
+                let solid = UIColor.black.withAlphaComponent(0.45).cgColor
+                let clear = UIColor.black.withAlphaComponent(0).cgColor
+                gradient.colors = edge == .leading ? [solid, clear] : [clear, solid]
+                gradient.startPoint = CGPoint(x: 0, y: 0.5)
+                gradient.endPoint = CGPoint(x: 1, y: 0.5)
+            }
+        }
+    }
+
+    extension TerminalInputBar: UIScrollViewDelegate {
+        public func scrollViewDidScroll(_: UIScrollView) {
+            updateScrollFades()
+        }
     }
 #endif

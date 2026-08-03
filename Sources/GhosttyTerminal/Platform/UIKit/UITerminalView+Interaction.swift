@@ -14,11 +14,11 @@
             _ touches: Set<UITouch>,
             with event: UIEvent?
         ) {
-            #if targetEnvironment(macCatalyst)
-                if handleIndirectPointerTouches(touches, phase: .began, event: event) {
-                    return
-                }
-            #endif
+            // Indirect-pointer (trackpad) touches exist on iPadOS too, not
+            // just Catalyst; direct touches fall through to the recognizers.
+            if handleIndirectPointerTouches(touches, phase: .began, event: event) {
+                return
+            }
             super.touchesBegan(touches, with: event)
         }
 
@@ -26,11 +26,9 @@
             _ touches: Set<UITouch>,
             with event: UIEvent?
         ) {
-            #if targetEnvironment(macCatalyst)
-                if handleIndirectPointerTouches(touches, phase: .moved, event: event) {
-                    return
-                }
-            #endif
+            if handleIndirectPointerTouches(touches, phase: .moved, event: event) {
+                return
+            }
             super.touchesMoved(touches, with: event)
         }
 
@@ -38,11 +36,9 @@
             _ touches: Set<UITouch>,
             with event: UIEvent?
         ) {
-            #if targetEnvironment(macCatalyst)
-                if handleIndirectPointerTouches(touches, phase: .ended, event: event) {
-                    return
-                }
-            #endif
+            if handleIndirectPointerTouches(touches, phase: .ended, event: event) {
+                return
+            }
             super.touchesEnded(touches, with: event)
         }
 
@@ -50,11 +46,9 @@
             _ touches: Set<UITouch>,
             with event: UIEvent?
         ) {
-            #if targetEnvironment(macCatalyst)
-                if handleIndirectPointerTouches(touches, phase: .cancelled, event: event) {
-                    return
-                }
-            #endif
+            if handleIndirectPointerTouches(touches, phase: .cancelled, event: event) {
+                return
+            }
             super.touchesCancelled(touches, with: event)
         }
 
@@ -64,6 +58,78 @@
             #else
                 setupTouchScrollInput()
             #endif
+        }
+
+        enum IndirectPointerPhase {
+            case began
+            case moved
+            case ended
+            case cancelled
+        }
+
+        func handleIndirectPointerTouches(
+            _ touches: Set<UITouch>,
+            phase: IndirectPointerPhase,
+            event: UIEvent?
+        ) -> Bool {
+            guard let touch = touches.first(where: { $0.type == .indirectPointer }) else {
+                return false
+            }
+
+            let button = pointerButton(from: event)
+            #if !targetEnvironment(macCatalyst)
+                // On iPadOS a trackpad's primary click already flows through
+                // the tap/scroll recognizers; claiming it here too would
+                // double-send press/release. Only the secondary button
+                // (right-click) needs this explicit path. Catalyst has no
+                // touch recognizers for pointer input and handles all buttons.
+                guard button == GHOSTTY_MOUSE_RIGHT else { return false }
+            #endif
+
+            stopMomentumScrolling()
+
+            let mods = ghostty_input_mods_e(rawValue: 0)
+            let location = touch.location(in: self)
+            surface?.sendMousePos(
+                x: location.x,
+                y: location.y,
+                mods: mods
+            )
+
+            switch phase {
+            case .began:
+                activePointerButton = button
+                surface?.sendMouseButton(
+                    state: GHOSTTY_MOUSE_PRESS,
+                    button: button,
+                    mods: mods
+                )
+
+            case .moved:
+                break
+
+            case .ended, .cancelled:
+                let releasedButton = activePointerButton ?? button
+                activePointerButton = nil
+                surface?.sendMouseButton(
+                    state: GHOSTTY_MOUSE_RELEASE,
+                    button: releasedButton,
+                    mods: mods
+                )
+            }
+
+            return true
+        }
+
+        func pointerButton(from event: UIEvent?) -> ghostty_input_mouse_button_e {
+            guard let event else { return GHOSTTY_MOUSE_LEFT }
+            if event.buttonMask.contains(.secondary) {
+                return GHOSTTY_MOUSE_RIGHT
+            }
+            if event.buttonMask.contains(.primary) {
+                return GHOSTTY_MOUSE_LEFT
+            }
+            return GHOSTTY_MOUSE_LEFT
         }
 
         #if targetEnvironment(macCatalyst)
@@ -98,69 +164,6 @@
                     mods: scrollMods.rawValue
                 )
             }
-
-            enum IndirectPointerPhase {
-                case began
-                case moved
-                case ended
-                case cancelled
-            }
-
-            func handleIndirectPointerTouches(
-                _ touches: Set<UITouch>,
-                phase: IndirectPointerPhase,
-                event: UIEvent?
-            ) -> Bool {
-                guard let touch = touches.first(where: { $0.type == .indirectPointer }) else {
-                    return false
-                }
-
-                stopMomentumScrolling()
-
-                let button = pointerButton(from: event)
-                let mods = ghostty_input_mods_e(rawValue: 0)
-                let location = touch.location(in: self)
-                surface?.sendMousePos(
-                    x: location.x,
-                    y: location.y,
-                    mods: mods
-                )
-
-                switch phase {
-                case .began:
-                    activePointerButton = button
-                    surface?.sendMouseButton(
-                        state: GHOSTTY_MOUSE_PRESS,
-                        button: button,
-                        mods: mods
-                    )
-
-                case .moved:
-                    break
-
-                case .ended, .cancelled:
-                    let releasedButton = activePointerButton ?? button
-                    activePointerButton = nil
-                    surface?.sendMouseButton(
-                        state: GHOSTTY_MOUSE_RELEASE,
-                        button: releasedButton,
-                        mods: mods
-                    )
-                }
-
-                return true
-            }
-
-            func pointerButton(from event: UIEvent?) -> ghostty_input_mouse_button_e {
-                guard let event else { return GHOSTTY_MOUSE_LEFT }
-                if event.buttonMask.contains(.secondary) {
-                    return GHOSTTY_MOUSE_RIGHT
-                }
-                if event.buttonMask.contains(.primary) {
-                    return GHOSTTY_MOUSE_LEFT
-                }
-                return GHOSTTY_MOUSE_LEFT
-            }
         #else
             func setupTouchScrollInput() {
                 addGestureRecognizer(terminalSelectionGestureRecognizer)
@@ -183,10 +186,32 @@
                 windowSwipeGesture.maximumNumberOfTouches = 2
                 addGestureRecognizer(windowSwipeGesture)
 
+                // iPadOS trackpad/mouse scroll arrives through a pan
+                // recognizer with allowedScrollTypesMask — the same recipe
+                // as the Catalyst wheel path. The one-finger touch
+                // recognizer above never sees these zero-touch events, so
+                // without this a Magic Keyboard two-finger scroll does
+                // nothing.
+                let trackpadScrollGesture = UIPanGestureRecognizer(
+                    target: self,
+                    action: #selector(handleTrackpadScrollGesture(_:))
+                )
+                trackpadScrollGesture.allowedScrollTypesMask = [.continuous, .discrete]
+                trackpadScrollGesture.cancelsTouchesInView = false
+                addGestureRecognizer(trackpadScrollGesture)
+
+                // Trackpad hover drives Ghostty's link highlighting and mouse
+                // position reporting; touch has no equivalent event.
+                addGestureRecognizer(UIHoverGestureRecognizer(
+                    target: self,
+                    action: #selector(handleTrackpadHoverGesture(_:))
+                ))
+
                 addInteraction(terminalEditMenuInteraction)
 
                 currentFontSize = Self.validatedFontSize(configuration.fontSize ?? 12)
                 setupPinchZoomGesture()
+                setupHardwareKeyboardObservation()
             }
         #endif
 
@@ -197,11 +222,43 @@
             )
         }
 
+        /// Trackpad/mouse scroll goes straight to Ghostty as precision wheel
+        /// deltas, matching the Catalyst path: a mouse-capturing TUI receives
+        /// wheel events, an ordinary shell gets Ghostty viewport scrolling.
+        /// The one-finger touch routing invariants (exact-client tmux
+        /// queries, host scrollback) apply to touch only.
+        @objc func handleTrackpadScrollGesture(_ gesture: UIPanGestureRecognizer) {
+            guard activePointerButton == nil else { return }
+            let translation = gesture.translation(in: self)
+            gesture.setTranslation(.zero, in: self)
+            guard translation.x != 0 || translation.y != 0 else { return }
+            let mods = TerminalScrollModifiers(precision: true)
+            surface?.sendMouseScroll(
+                x: Double(translation.x),
+                y: Double(translation.y),
+                mods: mods.rawValue
+            )
+        }
+
+        @objc func handleTrackpadHoverGesture(_ gesture: UIHoverGestureRecognizer) {
+            guard gesture.state == .began || gesture.state == .changed else { return }
+            let location = gesture.location(in: self)
+            surface?.sendMousePos(
+                x: location.x,
+                y: location.y,
+                mods: ghostty_input_mods_e(rawValue: 0)
+            )
+        }
+
         func handleTerminalTap(
             state: UIGestureRecognizer.State,
             location: CGPoint
         ) {
             guard state == .ended else { return }
+            // A tap during a momentum fling must halt the scroll before the
+            // click is synthesized — native scroll views stop on touch-down,
+            // and a gliding viewport would land the click on the wrong cell.
+            stopMomentumScrolling()
             guard canBecomeFirstResponder else { return }
             becomeFirstResponder()
             hideSelectionHandles()
@@ -597,10 +654,7 @@
 
         @objc func momentumScrollFrame(_ link: CADisplayLink) {
             let dt = link.targetTimestamp - link.timestamp
-            let deceleration: CGFloat = 0.92
-
-            momentumVelocity.x *= deceleration
-            momentumVelocity.y *= deceleration
+            momentumVelocity = TerminalMomentumDecay.decayedVelocity(momentumVelocity, dt: dt)
 
             let deltaX = momentumVelocity.x * dt * touchScrollMultiplier
             let deltaY = momentumVelocity.y * dt * touchScrollMultiplier
@@ -666,6 +720,10 @@
                         title: "Paste",
                         image: UIImage(systemName: "doc.on.clipboard")
                     ) { [weak self] _ in
+                        // The system edit menu cannot host a UIPasteControl,
+                        // so this direct read may show the one-time paste
+                        // permission banner — unlike the accessory bar's
+                        // paste control, whose tap grants access itself.
                         guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
                         self?.inputHandler.pasteText(text)
                     }

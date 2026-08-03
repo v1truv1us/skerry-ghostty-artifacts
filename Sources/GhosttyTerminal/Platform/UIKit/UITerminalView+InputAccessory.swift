@@ -4,14 +4,54 @@
 //
 
 #if canImport(UIKit) && !targetEnvironment(macCatalyst)
+    import GameController
     import GhosttyKit
     import UIKit
 
     extension UITerminalView {
         override public var inputAccessoryView: UIView? {
             switch inputBarPresentationMode {
-            case .bundled: terminalInputAccessory
-            case .hostManaged: nil
+            case .bundled:
+                // A connected hardware keyboard makes the two touch-key rows
+                // dead weight; the bar collapses to host actions + Hide
+                // Keyboard. GCKeyboard observation flips this live on
+                // connect/disconnect; this keeps first presentation correct.
+                terminalInputAccessory.isSlimForHardwareKeyboard = GCKeyboard.coalesced != nil
+                return terminalInputAccessory
+            case .hostManaged:
+                return nil
+            }
+        }
+
+        func setupHardwareKeyboardObservation() {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(hardwareKeyboardDidChange(_:)),
+                name: .GCKeyboardDidConnect,
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(hardwareKeyboardDidChange(_:)),
+                name: .GCKeyboardDidDisconnect,
+                object: nil
+            )
+        }
+
+        @objc private func hardwareKeyboardDidChange(_: Notification) {
+            terminalInputAccessory.isSlimForHardwareKeyboard = GCKeyboard.coalesced != nil
+            // The accessory's height changes with the mode; UIKit only
+            // re-queries the accessory view through reloadInputViews.
+            reloadInputViews()
+        }
+
+        /// The accessory bar's UIPasteControl grants pasteboard access with
+        /// its tap, so this read never shows the system permission banner.
+        func handlePasteFromPasteControl() {
+            commitMarkedTextIfStickyModifiersAreActive()
+            _ = stickyModifiers.consumeForNextKey()
+            if let text = UIPasteboard.general.string, !text.isEmpty {
+                inputHandler.pasteText(text)
             }
         }
 
@@ -23,6 +63,9 @@
                 _ = handleStickyTextInput(text)
 
             case .paste:
+                // The bar now pastes through UIPasteControl; this path
+                // remains for hosts that still dispatch the key directly and
+                // may show the system paste-permission banner.
                 _ = stickyModifiers.consumeForNextKey()
                 if let text = UIPasteboard.general.string, !text.isEmpty {
                     inputHandler.pasteText(text)
