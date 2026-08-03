@@ -19,6 +19,11 @@
 
         let edge: Edge
         var onPan: ((UIPanGestureRecognizer) -> Void)?
+        /// VoiceOver adjust callback: `true` for increment (swipe up), `false`
+        /// for decrement. The `.adjustable` trait is only exposed because the
+        /// owner wires this — an adjustable control without increment/decrement
+        /// actions silently swallows the gestures.
+        var onAccessibilityAdjust: ((Bool) -> Void)?
 
         private static let knobDiameter: CGFloat = 20
         private static let stemHeight: CGFloat = 22
@@ -76,6 +81,14 @@
 
         @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
             onPan?(gesture)
+        }
+
+        override func accessibilityIncrement() {
+            onAccessibilityAdjust?(true)
+        }
+
+        override func accessibilityDecrement() {
+            onAccessibilityAdjust?(false)
         }
     }
 #endif

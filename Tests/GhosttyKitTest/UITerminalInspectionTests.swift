@@ -469,6 +469,56 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertLessThan(leading.y, trailing.y)
     }
 
+    /// Build 12 exposed the `.adjustable` trait on both handles without
+    /// implementing increment/decrement, so VoiceOver swipes on a focused
+    /// handle silently did nothing. Each swipe must move that endpoint one
+    /// cell row vertically through the same press/move/release sequence a
+    /// touch drag uses.
+    func testSelectionHandleVoiceOverSwipeMovesEndpointOneRow() async throws {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        terminal.controller = TerminalController()
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: terminal.bounds)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        await Task.yield()
+        await Task.yield()
+        let surface = try XCTUnwrap(terminal.surface)
+        session.receive(Data("0123456789 abcdefghij\r\nsecond line\r\nthird line\r\n".utf8))
+        await Task.yield()
+
+        let mods = ghostty_input_mods_e(rawValue: 0)
+        surface.sendMousePos(x: 17.25, y: 12.75, mods: mods)
+        surface.sendMouseButton(state: GHOSTTY_MOUSE_PRESS, button: GHOSTTY_MOUSE_LEFT, mods: mods)
+        surface.sendMousePos(x: 121.5, y: 35.25, mods: mods)
+        surface.sendMouseButton(state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_LEFT, mods: mods)
+
+        terminal.ownsTerminalSelectionRange = true
+        XCTAssertTrue(terminal.synchronizeSelectionHandlesWithSurface())
+        let initialEnd = try XCTUnwrap(terminal.selectionEndPoint)
+        let size = try XCTUnwrap(surface.size())
+        let rowHeight = CGFloat(size.cellHeightPixels) / max(terminal.resolvedDisplayScale(), 1)
+
+        terminal.endSelectionHandle.accessibilityIncrement()
+        let movedEnd = try XCTUnwrap(terminal.selectionEndPoint)
+        XCTAssertEqual(movedEnd.y, initialEnd.y + rowHeight, accuracy: rowHeight * 0.5)
+        XCTAssertEqual(movedEnd.x, initialEnd.x, accuracy: 1)
+
+        terminal.endSelectionHandle.accessibilityDecrement()
+        let restoredEnd = try XCTUnwrap(terminal.selectionEndPoint)
+        XCTAssertEqual(restoredEnd.y, initialEnd.y, accuracy: rowHeight * 0.5)
+
+        let initialStart = try XCTUnwrap(terminal.selectionStartPoint)
+        terminal.startSelectionHandle.accessibilityIncrement()
+        let movedStart = try XCTUnwrap(terminal.selectionStartPoint)
+        XCTAssertEqual(movedStart.y, initialStart.y + rowHeight, accuracy: rowHeight * 0.5)
+    }
+
     /// Build 6 fired an asynchronous refresh and immediately routed from the
     /// stale value, so the first Claude/Codex swipe still did nothing useful.
     /// Movement must stay buffered until the exact-client result arrives and
