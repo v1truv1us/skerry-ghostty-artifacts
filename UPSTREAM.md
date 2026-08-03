@@ -31,6 +31,14 @@ checksum matched against upstream's own `Package.swift` and verified by
 SwiftPM on fetch). `Package.local.swift` targets the newly built local
 `BinaryTarget/GhosttyKit.xcframework` for development and verification.
 
+Local iOS and package verification run through
+`Scripts/with-local-ghostty-manifest.sh`, which temporarily swaps
+`Package.local.swift` over `Package.swift` for the command and restores the
+production manifest on exit (mirroring `Script/test-local-artifact.sh`). The
+wrapper fails fast with a pointer to `build.sh` if the local XCFramework is
+missing, so `bun run ios:test`, `ios:build`, `ios:test:ui:*`, `ghostty:test`,
+and `verify:local` build against the patched artifact without a manual swap.
+
 The newly built XCFramework is not published by Skerry itself yet. Before
 redistribution, review Ghostty and all statically linked dependency licenses
 and notices; this provenance record is not a substitute for a legal licensing
