@@ -615,11 +615,9 @@
                 action: #selector(handlePasteControlTapped(_:)),
                 for: .primaryActionTriggered
             )
-            control.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                control.widthAnchor.constraint(greaterThanOrEqualToConstant: buttonWidth),
-                control.heightAnchor.constraint(equalToConstant: buttonHeight),
-            ])
+            // No size constraints: UIPasteControl hides its glyph when
+            // compressed below its designed size (a forced 32pt height
+            // rendered it as a blank block). It self-sizes to fit the row.
             return control
         }
 
