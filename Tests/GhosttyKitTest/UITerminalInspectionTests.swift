@@ -1,11 +1,33 @@
 #if canImport(UIKit) && !targetEnvironment(macCatalyst)
 import GhosttyKit
 import UIKit
+import UniformTypeIdentifiers
 import XCTest
 @testable import GhosttyTerminal
 
 @MainActor
 final class UITerminalInspectionTests: XCTestCase {
+    /// The accessory bar's paste button rendered permanently dimmed and
+    /// swallowed taps: UIKit keeps a UIPasteControl disabled unless its
+    /// target exposes a pasteConfiguration accepting the pasteboard's types,
+    /// and nothing set a target. Regression test for copied text being
+    /// unpastable from the accessory bar.
+    func testAccessoryBarPasteControlTargetsBarWithPlainTextPasteConfiguration() {
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let bar = terminal.terminalInputAccessory
+
+        XCTAssertTrue(bar.pasteControl.target === bar)
+        XCTAssertEqual(
+            bar.pasteConfiguration?.acceptableTypeIdentifiers,
+            [UTType.plainText.identifier]
+        )
+
+        // A style change rebuilds the control (its configuration is copied at
+        // init); the rebuilt control must keep the same target wiring.
+        bar.style = .default
+        XCTAssertTrue(bar.pasteControl.target === bar)
+    }
+
     func testResponderEligibilityGatesAndImmediatelyResignsFocus() {
         let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let controller = UIViewController()

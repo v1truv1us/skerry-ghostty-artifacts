@@ -5,6 +5,7 @@
 
 #if canImport(UIKit) && !targetEnvironment(macCatalyst)
     import UIKit
+    import UniformTypeIdentifiers
 
     @MainActor
     public final class TerminalInputBar: UIView {
@@ -178,7 +179,8 @@
         // pasteboard access, so reading the pasteboard never triggers the
         // system paste-permission banner. Its configuration is copied at
         // init, so a style change rebuilds the control (see style.didSet).
-        private lazy var pasteControl = makePasteControl()
+        // Internal (not private) so tests can verify the paste-target wiring.
+        lazy var pasteControl = makePasteControl()
         private var customActionButtons: [AccessoryButton] = []
         private lazy var customActionDivider = makeDivider()
         private lazy var commandDivider = makeDivider()
@@ -367,6 +369,9 @@
             // zone nearest the keyboard for touch, which is what was asked
             // for.
             setupRow(scrollView: commandScrollView, stackView: commandStackView, in: rowsStackView)
+            // Test-only hook: Paste sits at the far end of this row, so UI
+            // tests need a stable identifier to scroll it into view.
+            commandScrollView.accessibilityIdentifier = "terminal-accessory-command-row"
             setupRow(scrollView: navScrollView, stackView: navStackView, in: rowsStackView)
 
             for (scrollView, leadingFade, trailingFade) in [
@@ -610,18 +615,37 @@
             configuration.cornerStyle = .fixed
             configuration.cornerRadius = 10
             let control = UIPasteControl(configuration: configuration)
-            control.addTarget(
-                self,
-                action: #selector(handlePasteControlTapped(_:)),
-                for: .primaryActionTriggered
-            )
             // No size constraints: UIPasteControl hides its glyph when
             // compressed below its designed size (a forced 32pt height
             // rendered it as a blank block). It self-sizes to fit the row.
+            // The control stays dimmed and swallows taps unless its target
+            // offers a pasteConfiguration accepting the pasteboard's types,
+            // so the bar itself is the target and paste delivery arrives
+            // through paste(itemProviders:) below.
+            control.target = self
             return control
         }
 
-        @objc private func handlePasteControlTapped(_: UIPasteControl) {
+        private let acceptedPasteConfiguration = UIPasteConfiguration(
+            acceptableTypeIdentifiers: [UTType.plainText.identifier]
+        )
+
+        override public var pasteConfiguration: UIPasteConfiguration? {
+            get { acceptedPasteConfiguration }
+            // UIKit assigns nil when the control's target is torn down;
+            // the accepted types never change, so writes are ignored.
+            set {}
+        }
+
+        override public func paste(itemProviders _: [NSItemProvider]) {
+            // This is the ONLY tap delivery path: once a UIPasteControl has
+            // a target, UIKit routes the tap to the target's
+            // paste(itemProviders:) and does not also fire
+            // primaryActionTriggered (observed on iOS 27: an addTarget
+            // handler alone left the enabled button dead). Wiring both would
+            // double-paste on versions that fire the action as well. The tap
+            // itself grants pasteboard access, so the handler's direct
+            // pasteboard read never shows the system permission banner.
             eligibleTerminalView?.handlePasteFromPasteControl()
         }
 
