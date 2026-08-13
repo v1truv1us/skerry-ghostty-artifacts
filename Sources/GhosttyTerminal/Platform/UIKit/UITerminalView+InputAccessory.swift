@@ -83,6 +83,13 @@
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x2B, additionalMods: mods)
 
+            case .backtab:
+                // Backtab is a fixed terminal control, not a modifier chord
+                // assembled by the accessory. Clearing sticky state preserves
+                // its raw in-memory route even after an abandoned modifier tap.
+                stickyModifiers.reset()
+                sendSyntheticKey(usage: 0x2B, additionalMods: .shift)
+
             case .insert:
                 let mods = stickyModifiers.consumeForNextKey()
                 sendSyntheticKey(usage: 0x49, additionalMods: mods)

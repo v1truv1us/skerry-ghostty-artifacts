@@ -37,8 +37,17 @@ enum TerminalHardwareKeyRouter {
         backend: TerminalSessionBackend,
         modifiers: TerminalInputModifiers
     ) -> TerminalHardwareKeyDelivery {
+        // Caps Lock and Num Lock are lock states, not command modifiers, so they
+        // must never change control-key routing. Matching `modifiers == .shift`
+        // exactly meant Shift+Tab with Caps Lock (or Num Lock) engaged fell
+        // through to a Ghostty key event, which the in-memory backend can't turn
+        // into Backtab without a rendered surface — Shift+Tab silently did
+        // nothing. Mask the lock bits so the same physical chord routes
+        // identically regardless of lock state.
+        let commandModifiers = modifiers.subtracting([.caps, .num])
+
         if case .inMemory = backend,
-           modifiers == .shift,
+           commandModifiers == .shift,
            usage == 0x2B
         {
             return .data(Data("\u{1B}[Z".utf8))
@@ -48,7 +57,7 @@ enum TerminalHardwareKeyRouter {
         // Shift-Tab is the one fixed modified sequence above. Other modified
         // synthetic accessory keys need a real Ghostty key event so the
         // backend can emit the correct mode-aware escape sequence.
-        guard modifiers.isEmpty else {
+        guard commandModifiers.isEmpty else {
             return .ghostty(ghosttyKeyForUIKit(usage: usage))
         }
         return routeUIKit(usage: usage, backend: backend)

@@ -8,6 +8,7 @@
         case esc
         case interrupt
         case tab
+        case backtab
         case insert
         case deleteForward
         case end

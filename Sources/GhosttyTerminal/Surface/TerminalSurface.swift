@@ -91,6 +91,63 @@ public final class TerminalSurface {
         }
     }
 
+    /// Captures only cursor/grid geometry. This intentionally derives the cell
+    /// from Ghostty's IME point instead of adding a second terminal parser or
+    /// exposing screen content to the host application.
+    func predictionAnchor() -> TerminalPredictionAnchor? {
+        guard let metrics = size() else { return nil }
+        return TerminalPredictionGeometry.anchor(metrics: metrics, imePoint: imePoint())
+    }
+
+    /// Compares rendered cells with local UTF-8 input bytes and returns only a
+    /// boolean. Terminal text never crosses this wrapper boundary, is never
+    /// decoded into a String, and is freed before returning. Mosh uses this to
+    /// verify an EchoAck prediction without inspecting raw PTY output.
+    func contentHasPrefix(_ expected: Data, from anchor: TerminalPredictionAnchor) -> Bool {
+        guard !expected.isEmpty,
+              let s = surface,
+              let metrics = size(),
+              metrics.columns == anchor.columns,
+              metrics.rows == anchor.rows,
+              anchor.column < UInt32(metrics.columns),
+              anchor.row < UInt32(metrics.rows)
+        else { return false }
+
+        let topLeft = ghostty_point_s(
+            tag: GHOSTTY_POINT_VIEWPORT,
+            coord: GHOSTTY_POINT_COORD_EXACT,
+            x: anchor.column,
+            y: anchor.row
+        )
+        let bottomRight = ghostty_point_s(
+            tag: GHOSTTY_POINT_VIEWPORT,
+            coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
+            x: 0,
+            y: 0
+        )
+        let selection = ghostty_selection_s(
+            top_left: topLeft,
+            bottom_right: bottomRight,
+            rectangle: false
+        )
+        var text = ghostty_text_s(
+            tl_px_x: 0,
+            tl_px_y: 0,
+            offset_start: 0,
+            offset_len: 0,
+            text: nil,
+            text_len: 0
+        )
+        guard ghostty_surface_read_text(s, selection, &text) else { return false }
+        defer { ghostty_surface_free_text(s, &text) }
+        guard let bytes = text.text, text.text_len >= expected.count else { return false }
+
+        let rendered = UnsafeRawBufferPointer(start: bytes, count: Int(text.text_len))
+        return expected.enumerated().allSatisfy { index, byte in
+            rendered[index] == byte
+        }
+    }
+
     // MARK: - Actions
 
     @discardableResult

@@ -19,5 +19,27 @@
         func performBindingAction(_ action: String) -> Bool {
             surface?.performBindingAction(action) ?? false
         }
+
+        /// Shows a non-committing speculative Mosh echo at Ghostty's cursor.
+        /// Active IME composition always owns preedit and suppresses prediction.
+        @discardableResult
+        func setSpeculativePreedit(_ text: String) -> Bool {
+            guard !inputHandler.hasMarkedText, let surface else { return false }
+            surface.preedit(text)
+            return true
+        }
+
+        func capturePredictionAnchor() -> TerminalPredictionAnchor? {
+            surface?.predictionAnchor()
+        }
+
+        /// Returns only whether rendered cells match local input bytes. The
+        /// terminal content itself remains private to Ghostty.
+        func renderedContentHasPrefix(
+            _ expected: Data,
+            from anchor: TerminalPredictionAnchor
+        ) -> Bool {
+            surface?.contentHasPrefix(expected, from: anchor) ?? false
+        }
     }
 #endif

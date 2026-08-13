@@ -109,6 +109,48 @@ struct TerminalHardwareKeyRouterTests {
         )
     }
 
+    /// Regression: Shift+Tab did nothing when a lock state (Caps Lock / Num
+    /// Lock) was engaged, because the router matched `.shift` exactly and the
+    /// extra lock bit routed the chord to a Ghostty key event the in-memory
+    /// backend never turned into Backtab. Lock states must not change routing.
+    @Test
+    func routesShiftTabAsBacktabRegardlessOfLockStates() {
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let backtab = TerminalHardwareKeyDelivery.data(Data("\u{1B}[Z".utf8))
+
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x2B,
+                backend: .inMemory(session),
+                modifiers: [.shift, .caps]
+            ) == backtab
+        )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x2B,
+                backend: .inMemory(session),
+                modifiers: [.shift, .num]
+            ) == backtab
+        )
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x2B,
+                backend: .inMemory(session),
+                modifiers: [.shift, .caps, .num]
+            ) == backtab
+        )
+
+        // A lock state alone (no Shift) must still send an unmodified Tab, not
+        // Backtab — masking the lock bits leaves an empty command set.
+        #expect(
+            TerminalHardwareKeyRouter.routeUIKit(
+                usage: 0x2B,
+                backend: .inMemory(session),
+                modifiers: [.caps]
+            ) == .data(Data([0x09]))
+        )
+    }
+
     @Test
     func routesUIKitKeysToGhosttyForExecBackends() {
         #expect(

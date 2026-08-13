@@ -124,6 +124,11 @@
             systemImage: "arrow.right.to.line",
             key: .tab
         )
+        private lazy var backtabButton = makeKeyButton(
+            title: "Backtab",
+            systemImage: "arrow.left.to.line",
+            key: .backtab
+        )
         private lazy var insertButton = makeKeyButton(
             title: "Ins",
             accessibilityLabel: "Insert",
@@ -510,6 +515,7 @@
                     cmdButton,
                     commandDivider,
                     tabButton,
+                    backtabButton,
                 ] + symbolButtons + [
                     pasteControl,
                 ]
