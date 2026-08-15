@@ -12,6 +12,21 @@ import GhosttyKit
     import AppKit
 #endif
 
+public enum TerminalClipboardPolicy {
+    /// Remote escape sequences may write the clipboard but cannot read it.
+    public static let allowsRemoteReadRequests = false
+
+    public static func writeRemoteText(_ string: String) {
+        #if canImport(UIKit)
+            UIPasteboard.general.string = string
+        #elseif canImport(AppKit)
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(string, forType: .string)
+        #endif
+    }
+}
+
 private enum TerminalCallbacks {
     static func wakeup(userdata: UnsafeMutableRawPointer?) {
         guard let userdata else { return }
@@ -72,13 +87,7 @@ private enum TerminalCallbacks {
         guard let data = content.data else { return }
         let string = String(cString: data)
 
-        #if canImport(UIKit)
-            UIPasteboard.general.string = string
-        #elseif canImport(AppKit)
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(string, forType: .string)
-        #endif
+        TerminalClipboardPolicy.writeRemoteText(string)
     }
 
     static func readClipboard(
@@ -89,7 +98,7 @@ private enum TerminalCallbacks {
         // OSC 52 writes are useful remote-to-device synchronization. Reads are
         // deliberately unsupported: a remote process must never exfiltrate the
         // device clipboard merely by printing an escape sequence.
-        false
+        TerminalClipboardPolicy.allowsRemoteReadRequests
     }
 }
 
