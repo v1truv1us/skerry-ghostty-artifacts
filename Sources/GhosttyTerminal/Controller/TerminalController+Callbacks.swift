@@ -82,28 +82,14 @@ private enum TerminalCallbacks {
     }
 
     static func readClipboard(
-        userdata: UnsafeMutableRawPointer?,
+        userdata _: UnsafeMutableRawPointer?,
         clipboard _: ghostty_clipboard_e,
-        opaquePtr: UnsafeMutableRawPointer?
+        opaquePtr _: UnsafeMutableRawPointer?
     ) -> Bool {
-        guard let userdata, let opaquePtr else { return false }
-
-        let bridge = Unmanaged<TerminalCallbackBridge>
-            .fromOpaque(userdata)
-            .takeUnretainedValue()
-        guard let surface = bridge.rawSurface else { return false }
-
-        #if canImport(UIKit)
-            let string = UIPasteboard.general.string
-        #elseif canImport(AppKit)
-            let string = NSPasteboard.general.string(forType: .string)
-        #endif
-
-        guard let string else { return false }
-        string.withCString { cString in
-            ghostty_surface_complete_clipboard_request(surface, cString, opaquePtr, true)
-        }
-        return true
+        // OSC 52 writes are useful remote-to-device synchronization. Reads are
+        // deliberately unsupported: a remote process must never exfiltrate the
+        // device clipboard merely by printing an escape sequence.
+        false
     }
 }
 

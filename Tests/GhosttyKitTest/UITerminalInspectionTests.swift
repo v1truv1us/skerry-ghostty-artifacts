@@ -7,6 +7,38 @@ import XCTest
 
 @MainActor
 final class UITerminalInspectionTests: XCTestCase {
+    func testOSC52WriteCopiesDecodedTextToSystemClipboardAndReadFailsClosed() async throws {
+        let originalItems = UIPasteboard.general.items
+        defer { UIPasteboard.general.items = originalItems }
+
+        let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
+        let terminal = UITerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        terminal.controller = TerminalController()
+        terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: terminal.bounds)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        await Task.yield()
+        await Task.yield()
+        _ = try XCTUnwrap(terminal.surface)
+
+        let expected = "remote OSC 52 fixture"
+        let encoded = Data(expected.utf8).base64EncodedString()
+        session.receive(Data("\u{1B}]52;c;\(encoded)\u{07}".utf8))
+        await Task.yield()
+
+        XCTAssertEqual(UIPasteboard.general.string, expected)
+        XCTAssertFalse(terminalControllerReadClipboardCallback(
+            userdata: UnsafeMutableRawPointer(bitPattern: 1),
+            clipboard: GHOSTTY_CLIPBOARD_STANDARD,
+            opaquePtr: UnsafeMutableRawPointer(bitPattern: 1)
+        ))
+    }
+
     /// The accessory bar's paste button rendered permanently dimmed and
     /// swallowed taps: UIKit keeps a UIPasteControl disabled unless its
     /// target exposes a pasteConfiguration accepting the pasteboard's types,
