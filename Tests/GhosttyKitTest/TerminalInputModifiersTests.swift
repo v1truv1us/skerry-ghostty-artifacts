@@ -27,6 +27,19 @@ final class TerminalInputModifiersTests: XCTestCase {
         XCTAssertFalse(plan.refreshesLinkState)
     }
 
+    /// Regression: herdr's navigation stopped responding to taps whenever its
+    /// mouse-capture flag was unavailable, because Skerry synthesized a local
+    /// Command-click instead of forwarding the plain click to herdr.
+    func testHerdrForwardsPlainClickWhenMouseCaptureIsUnavailable() {
+        let plan = TerminalInputModifiers.singleTapClickPlan(
+            isMouseCaptured: false,
+            prefersRemotePointerInput: true
+        )
+
+        XCTAssertEqual(plan.modifiers, [])
+        XCTAssertFalse(plan.refreshesLinkState)
+    }
+
     /// OpenCode captures mouse input. Command alone never makes Ghostty scan
     /// for a local link in that state; Shift must bypass capture while Command
     /// requests activation, and a same-coordinate retry must refresh hover.

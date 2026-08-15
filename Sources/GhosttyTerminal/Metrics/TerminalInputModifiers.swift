@@ -46,9 +46,10 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
     /// only update at the same pointer coordinates.
     static func singleTapClickPlan(
         isMouseCaptured: Bool,
+        prefersRemotePointerInput: Bool = false,
         explicitlyActivatesLink: Bool = false
     ) -> TerminalTapEventPlan {
-        if isMouseCaptured {
+        if isMouseCaptured || prefersRemotePointerInput {
             return explicitlyActivatesLink
                 ? TerminalTapEventPlan(
                     modifiers: [.shift, .super_],
@@ -67,10 +68,12 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
 
     public static func singleTapClick(
         isMouseCaptured: Bool,
+        prefersRemotePointerInput: Bool = false,
         explicitlyActivatesLink: Bool = false
     ) -> TerminalInputModifiers {
         singleTapClickPlan(
             isMouseCaptured: isMouseCaptured,
+            prefersRemotePointerInput: prefersRemotePointerInput,
             explicitlyActivatesLink: explicitlyActivatesLink
         ).modifiers
     }

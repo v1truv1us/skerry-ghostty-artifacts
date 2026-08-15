@@ -279,6 +279,7 @@
             #endif
             let tapPlan = TerminalInputModifiers.singleTapClickPlan(
                 isMouseCaptured: surface.isMouseCaptured,
+                prefersRemotePointerInput: prefersRemotePointerInput,
                 explicitlyActivatesLink: explicitlyActivatesLink
             )
             let mods = tapPlan.modifiers.ghosttyMods
@@ -386,7 +387,7 @@
                 pendingTouchScrollEndVelocity = nil
 
                 let isMouseCaptured = surface?.isMouseCaptured == true
-                if isMouseCaptured {
+                if isMouseCaptured || prefersRemotePointerInput {
                     touchScrollOwner = .terminal
                 } else if let touchScrollContextProvider {
                     // The exact-client query is asynchronous. Keep the gesture
@@ -491,7 +492,7 @@
 
             let buffered = bufferedTouchScroll
             bufferedTouchScroll = .zero
-            if surface?.isMouseCaptured == true {
+            if surface?.isMouseCaptured == true || prefersRemotePointerInput {
                 // Mouse reporting can turn on while the remote query is in
                 // flight. The live surface wins: a mouse-aware TUI owns scroll.
                 touchScrollOwner = .terminal

@@ -173,6 +173,12 @@
         /// capture alone: primary-screen scrollback must remain Ghostty-owned.
         public var isUncapturedAlternateScreen = false
 
+        /// The host knows this terminal UI accepts pointer clicks and wheel
+        /// input even when Ghostty's mouse-capture flag is unavailable. This
+        /// is intentionally opt-in: ordinary shells keep Command-click link
+        /// activation and local scrollback.
+        public var prefersRemotePointerInput = false
+
         /// Called after Ghostty completes a rendered frame. The callback must
         /// never inspect or receive terminal content.
         public var postRenderHandler: (() -> Void)?

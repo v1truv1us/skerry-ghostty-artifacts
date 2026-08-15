@@ -3,6 +3,16 @@ import Testing
 
 struct TerminalTouchScrollRoutingTests {
     @Test
+    func herdrOwnsScrollWhenMouseCaptureIsUnavailable() {
+        #expect(TerminalTouchScrollRouting.initialOwner(
+            isMouseCaptured: false,
+            prefersRemotePointerInput: true,
+            hasHostHandler: true,
+            isUncapturedAlternateScreen: true
+        ) == .terminal)
+    }
+
+    @Test
     func mouseCapturedTerminalOwnsScrolling() {
         #expect(TerminalTouchScrollRouting.initialOwner(
             isMouseCaptured: true,

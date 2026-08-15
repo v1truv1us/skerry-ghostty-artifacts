@@ -19,6 +19,7 @@ public enum TerminalTouchScrollDestination: Equatable, Sendable {
 enum TerminalTouchScrollRouting {
     static func initialOwner(
         isMouseCaptured: Bool,
+        prefersRemotePointerInput: Bool = false,
         hasHostHandler: Bool,
         isUncapturedAlternateScreen: Bool
     ) -> TerminalTouchScrollOwner {
@@ -29,7 +30,8 @@ enum TerminalTouchScrollRouting {
         // prompt history instead of revealing prior output. Only a host that
         // has independently proven that exact screen state may use its own
         // scrollback implementation (for Skerry, confirmed tmux copy mode).
-        guard hasHostHandler,
+        guard !prefersRemotePointerInput,
+              hasHostHandler,
               isUncapturedAlternateScreen,
               !isMouseCaptured
         else { return .terminal }
