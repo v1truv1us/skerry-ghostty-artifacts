@@ -79,6 +79,10 @@
         var pendingTouchScrollEndVelocity: CGPoint?
         var isTerminalSelectionActive = false
         var terminalSelectionModifiers = ghostty_input_mods_e(rawValue: 0)
+        var terminalLongPressButton = GHOSTTY_MOUSE_LEFT
+        var terminalLongPressSelectsText = true
+        var terminalLongPressButtonIsDown = false
+        var terminalLongPressOrigin: CGPoint?
         lazy var terminalEditMenuInteraction = UIEditMenuInteraction(delegate: self)
         // These points are snapshots of Ghostty's authoritative selected
         // range, never the touches that initiated or adjusted it. Keeping an

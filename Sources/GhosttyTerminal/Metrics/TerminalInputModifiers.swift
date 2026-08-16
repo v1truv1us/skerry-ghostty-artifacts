@@ -78,6 +78,52 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
         ).modifiers
     }
 
+    /// A touch hold maps to the platform's secondary click only when a remote
+    /// program owns pointer input. Ordinary shells retain Ghostty's native text
+    /// selection gesture. This mirrors the single-tap routing boundary and
+    /// keeps herdr working when its capture bit is unavailable.
+    static func longPressPlan(
+        isMouseCaptured: Bool,
+        prefersRemotePointerInput: Bool = false
+    ) -> TerminalLongPressEventPlan {
+        if isMouseCaptured || prefersRemotePointerInput {
+            return TerminalLongPressEventPlan(
+                button: GHOSTTY_MOUSE_RIGHT,
+                modifiers: [],
+                selectsText: false,
+                pressesOnRecognition: false
+            )
+        }
+        return TerminalLongPressEventPlan(
+            button: GHOSTTY_MOUSE_LEFT,
+            modifiers: [],
+            selectsText: true,
+            pressesOnRecognition: true
+        )
+    }
+
+    /// A remote-pointer hold remains a secondary click while stationary, but
+    /// movement after recognition is explicit selection intent. Switching the
+    /// active button lets a person open herdr's context menus and still use the
+    /// normal hold-drag-copy gesture in the same terminal.
+    static func longPressDragPlan(
+        current: TerminalLongPressEventPlan,
+        movement: CGFloat
+    ) -> TerminalLongPressEventPlan {
+        guard !current.selectsText,
+              movement >= TerminalLongPressEventPlan.selectionDragThreshold
+        else { return current }
+        return TerminalLongPressEventPlan(
+            button: GHOSTTY_MOUSE_LEFT,
+            // Ghostty uses Shift to bypass an application's mouse capture and
+            // perform local selection. Without it, Codex/herdr receives this
+            // as a remote left drag and no selectable range is created.
+            modifiers: .shift,
+            selectsText: true,
+            pressesOnRecognition: true
+        )
+    }
+
     public var ghosttyMods: ghostty_input_mods_e {
         ghostty_input_mods_e(rawValue)
     }
@@ -111,4 +157,16 @@ public struct TerminalInputModifiers: OptionSet, Sendable {
 struct TerminalTapEventPlan: Equatable {
     let modifiers: TerminalInputModifiers
     let refreshesLinkState: Bool
+}
+
+struct TerminalLongPressEventPlan: Equatable {
+    static let selectionDragThreshold: CGFloat = 12
+
+    let button: ghostty_input_mouse_button_e
+    let modifiers: TerminalInputModifiers
+    let selectsText: Bool
+    /// Remote secondary clicks are committed only when a stationary hold ends.
+    /// Sending their press at recognition means changing into a selection drag
+    /// must release it, which opens the remote menu alongside the local range.
+    let pressesOnRecognition: Bool
 }

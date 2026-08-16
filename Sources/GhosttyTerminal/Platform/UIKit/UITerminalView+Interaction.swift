@@ -313,23 +313,71 @@
                 stopMomentumScrolling()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 hideSelectionHandles()
-                terminalSelectionModifiers = surface.isMouseCaptured
-                    ? TerminalInputModifiers.shift.ghosttyMods
-                    : ghostty_input_mods_e(rawValue: 0)
+                let plan = TerminalInputModifiers.longPressPlan(
+                    isMouseCaptured: surface.isMouseCaptured,
+                    prefersRemotePointerInput: prefersRemotePointerInput
+                )
+                terminalSelectionModifiers = plan.modifiers.ghosttyMods
+                terminalLongPressButton = plan.button
+                terminalLongPressSelectsText = plan.selectsText
+                terminalLongPressButtonIsDown = false
+                terminalLongPressOrigin = location
                 isTerminalSelectionActive = true
                 surface.sendMousePos(
                     x: location.x,
                     y: location.y,
                     mods: terminalSelectionModifiers
                 )
-                surface.sendMouseButton(
-                    state: GHOSTTY_MOUSE_PRESS,
-                    button: GHOSTTY_MOUSE_LEFT,
-                    mods: terminalSelectionModifiers
-                )
+                if plan.pressesOnRecognition {
+                    surface.sendMouseButton(
+                        state: GHOSTTY_MOUSE_PRESS,
+                        button: terminalLongPressButton,
+                        mods: terminalSelectionModifiers
+                    )
+                    terminalLongPressButtonIsDown = true
+                }
 
             case .changed:
                 guard isTerminalSelectionActive else { return }
+                if let origin = terminalLongPressOrigin {
+                    let movement = hypot(location.x - origin.x, location.y - origin.y)
+                    let currentPlan = TerminalLongPressEventPlan(
+                        button: terminalLongPressButton,
+                        modifiers: TerminalInputModifiers(rawValue: terminalSelectionModifiers.rawValue),
+                        selectsText: terminalLongPressSelectsText,
+                        pressesOnRecognition: terminalLongPressButtonIsDown
+                    )
+                    let nextPlan = TerminalInputModifiers.longPressDragPlan(
+                        current: currentPlan,
+                        movement: movement
+                    )
+                    if nextPlan != currentPlan {
+                        // A remote right press is deliberately deferred, so a
+                        // drag can begin left-button selection at the original
+                        // anchor without ever committing the context click.
+                        if terminalLongPressButtonIsDown {
+                            surface.sendMouseButton(
+                                state: GHOSTTY_MOUSE_RELEASE,
+                                button: terminalLongPressButton,
+                                mods: terminalSelectionModifiers
+                            )
+                        }
+                        terminalLongPressButton = nextPlan.button
+                        terminalSelectionModifiers = nextPlan.modifiers.ghosttyMods
+                        terminalLongPressSelectsText = nextPlan.selectsText
+                        surface.sendMousePos(
+                            x: origin.x,
+                            y: origin.y,
+                            mods: terminalSelectionModifiers
+                        )
+                        surface.sendMouseButton(
+                            state: GHOSTTY_MOUSE_PRESS,
+                            button: terminalLongPressButton,
+                            mods: terminalSelectionModifiers
+                        )
+                        terminalLongPressButtonIsDown = true
+                    }
+                }
                 surface.sendMousePos(
                     x: location.x,
                     y: location.y,
@@ -356,12 +404,38 @@
                 y: location.y,
                 mods: terminalSelectionModifiers
             )
-            surface.sendMouseButton(
-                state: GHOSTTY_MOUSE_RELEASE,
-                button: GHOSTTY_MOUSE_LEFT,
-                mods: terminalSelectionModifiers
-            )
+            if terminalLongPressButtonIsDown {
+                surface.sendMouseButton(
+                    state: GHOSTTY_MOUSE_RELEASE,
+                    button: terminalLongPressButton,
+                    mods: terminalSelectionModifiers
+                )
+            } else if !terminalLongPressSelectsText, showMenu {
+                // Commit a remote secondary click only after the gesture ends
+                // without becoming a drag. This makes right-click and local
+                // selection mutually exclusive for one direct-touch gesture.
+                surface.sendMouseButton(
+                    state: GHOSTTY_MOUSE_PRESS,
+                    button: terminalLongPressButton,
+                    mods: terminalSelectionModifiers
+                )
+                surface.sendMouseButton(
+                    state: GHOSTTY_MOUSE_RELEASE,
+                    button: terminalLongPressButton,
+                    mods: terminalSelectionModifiers
+                )
+            }
+            terminalLongPressButtonIsDown = false
             isTerminalSelectionActive = false
+            terminalLongPressOrigin = nil
+
+            // A remote secondary click belongs entirely to the TUI. Never
+            // claim a Ghostty selection or show the local Copy menu afterward.
+            // Regression: testLongPressSendsRightClickToMouseCapturedTerminal.
+            guard terminalLongPressSelectsText else {
+                hideSelectionHandles()
+                return
+            }
 
             guard showMenu else {
                 hideSelectionHandles()

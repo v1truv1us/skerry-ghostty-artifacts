@@ -53,6 +53,56 @@ final class TerminalInputModifiersTests: XCTestCase {
         XCTAssertTrue(plan.refreshesLinkState)
     }
 
+    /// User-visible regression: holding on a mouse-aware pane must open the
+    /// remote TUI's context action (for example, close pane) instead of always
+    /// beginning Ghostty text selection with a left-button drag.
+    func testLongPressSendsRightClickToMouseCapturedTerminal() {
+        let plan = TerminalInputModifiers.longPressPlan(isMouseCaptured: true)
+
+        XCTAssertEqual(plan.button, GHOSTTY_MOUSE_RIGHT)
+        XCTAssertEqual(plan.modifiers, [])
+        XCTAssertFalse(plan.selectsText)
+        XCTAssertFalse(plan.pressesOnRecognition)
+    }
+
+    func testHerdrLongPressSendsRightClickWhenCaptureBitIsUnavailable() {
+        let plan = TerminalInputModifiers.longPressPlan(
+            isMouseCaptured: false,
+            prefersRemotePointerInput: true
+        )
+
+        XCTAssertEqual(plan.button, GHOSTTY_MOUSE_RIGHT)
+        XCTAssertFalse(plan.selectsText)
+        XCTAssertFalse(plan.pressesOnRecognition)
+    }
+
+    func testShellLongPressStillSelectsTerminalText() {
+        let plan = TerminalInputModifiers.longPressPlan(isMouseCaptured: false)
+
+        XCTAssertEqual(plan.button, GHOSTTY_MOUSE_LEFT)
+        XCTAssertTrue(plan.selectsText)
+        XCTAssertTrue(plan.pressesOnRecognition)
+    }
+
+    /// User-visible regression: making herdr holds into right-clicks removed
+    /// the only direct-touch path to select and copy terminal text.
+    func testHerdrHoldDragChangesFromRightClickToTextSelection() {
+        let held = TerminalInputModifiers.longPressPlan(
+            isMouseCaptured: false,
+            prefersRemotePointerInput: true
+        )
+
+        XCTAssertEqual(
+            TerminalInputModifiers.longPressDragPlan(current: held, movement: 11),
+            held
+        )
+        let dragged = TerminalInputModifiers.longPressDragPlan(current: held, movement: 12)
+        XCTAssertEqual(dragged.button, GHOSTTY_MOUSE_LEFT)
+        XCTAssertEqual(dragged.modifiers, .shift)
+        XCTAssertTrue(dragged.selectsText)
+        XCTAssertTrue(dragged.pressesOnRecognition)
+    }
+
     func testOpenURLActionIsClaimedSoGhosttyCannotBypassHostURLPolicy() {
         XCTAssertTrue(terminalControllerHandlesAction(GHOSTTY_ACTION_OPEN_URL))
         XCTAssertFalse(terminalControllerHandlesAction(GHOSTTY_ACTION_MOUSE_OVER_LINK))
