@@ -163,6 +163,49 @@ final class UITerminalInspectionTests: XCTestCase {
         XCTAssertEqual(recorder.data, Data([0x09]))
     }
 
+    /// Regression: a physical keyboard's Tab and Shift-Tab stopped reaching
+    /// OpenCode while UIKit was rebuilding the Ghostty surface. These fixed
+    /// in-memory sequences must use the surface-independent delivery path.
+    func testHardwareTabAndShiftTabReachOpenCodeWithoutRenderedSurface() {
+        let recorder = TerminalInputRecorder()
+        let session = InMemoryTerminalSession(
+            write: { recorder.append($0) },
+            resize: { _ in }
+        )
+        let terminal = UITerminalView(frame: .zero)
+        terminal.configuration = TerminalSurfaceOptions(
+            backend: .inMemory(session)
+        )
+
+        let tab = TerminalHardwareKeyRouter.routeUIKit(
+            usage: 0x2B,
+            backend: terminal.configuration.backend,
+            modifiers: []
+        )
+        XCTAssertTrue(terminal.handleDirectInputIfNeeded(
+            tab,
+            action: GHOSTTY_ACTION_PRESS,
+            isCommandModified: false,
+            filteredModifierFlags: []
+        ))
+
+        let backtab = TerminalHardwareKeyRouter.routeUIKit(
+            usage: 0x2B,
+            backend: terminal.configuration.backend,
+            modifiers: .shift
+        )
+        XCTAssertTrue(terminal.handleDirectInputIfNeeded(
+            backtab,
+            action: GHOSTTY_ACTION_PRESS,
+            isCommandModified: false,
+            filteredModifierFlags: .shift
+        ))
+
+        var expected = Data([0x09])
+        expected.append(Data("\u{1B}[Z".utf8))
+        XCTAssertEqual(recorder.data, expected)
+    }
+
     /// The bundled accessory bar's symbol row was empty until now. Backtick
     /// is absent from iOS's stock keyboard entirely; tilde, pipe, and
     /// backslash sit two taps deep on the 123→#+= page. Confirms every
@@ -583,7 +626,7 @@ final class UITerminalInspectionTests: XCTestCase {
     /// was ineffective in build 6, while tmux copy mode worked but trapped the
     /// user in a second interaction mode. A verified primary-screen agent must
     /// move Ghostty's own viewport directly and emit neither PTY nor host input.
-    func testPrimaryScreenCodingAgentSwipeUsesLocalScrollbackWithoutTmuxCopyMode() async throws {
+    func testHerdrSwipeStaysRemoteWhenCaptureBitDropsSoScrollingDoesNotStopWorking() async throws {
         let recorder = TerminalInputRecorder()
         let session = InMemoryTerminalSession(
             write: { recorder.append($0) },
@@ -599,6 +642,10 @@ final class UITerminalInspectionTests: XCTestCase {
             hostActions.append(action)
             return true
         }
+        // Even if a stale child classification suggests local scrollback and
+        // Ghostty's capture bit is currently false, herdr renders the visible
+        // child and must receive the entire swipe.
+        terminal.prefersRemotePointerInput = true
         terminal.touchScrollContextProvider = { .localScrollback }
 
         let controller = UIViewController()
@@ -612,6 +659,7 @@ final class UITerminalInspectionTests: XCTestCase {
 
         let output = (0 ..< 100).map { "line-\($0)\r\n" }.joined()
         session.receive(Data(output.utf8))
+        XCTAssertFalse(terminal.surface?.isMouseCaptured == true)
         for _ in 0 ..< 100 {
             if let position = state.scrollbarPosition,
                position.total > position.length,
@@ -632,19 +680,11 @@ final class UITerminalInspectionTests: XCTestCase {
             translation: CGPoint(x: 0, y: 80)
         ))
         terminal.handleTouchScrollGesture(TestPanGestureRecognizer(state: .ended))
-        for _ in 0 ..< 100 {
-            if let position = state.scrollbarPosition,
-               position.offset < bottom.offset
-            {
-                break
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-
+        try await Task.sleep(for: .milliseconds(30))
         let scrolled = try XCTUnwrap(state.scrollbarPosition)
-        XCTAssertLessThan(scrolled.offset, bottom.offset)
+        XCTAssertEqual(scrolled.offset, bottom.offset)
         XCTAssertTrue(hostActions.isEmpty)
-        XCTAssertEqual(recorder.data, Data())
+        XCTAssertFalse(recorder.data.isEmpty, "herdr must receive the swipe even while capture is false")
     }
 
     func testHostFontSetterDoesNotPublishButInteractiveChangeDoes() {

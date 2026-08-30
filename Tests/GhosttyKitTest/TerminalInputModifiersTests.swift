@@ -86,21 +86,41 @@ final class TerminalInputModifiersTests: XCTestCase {
 
     /// User-visible regression: making herdr holds into right-clicks removed
     /// the only direct-touch path to select and copy terminal text.
+    func testWorkspaceLongPressKeepsOriginalRowThroughOrdinaryFingerDrift() {
+        let held = TerminalInputModifiers.longPressPlan(
+            isMouseCaptured: false,
+            prefersRemotePointerInput: true
+        )
+
+        let origin = CGPoint(x: 40, y: 100)
+        let drifted = CGPoint(x: 40, y: 118)
+        XCTAssertEqual(
+            TerminalInputModifiers.longPressDragPlan(current: held, movement: 18),
+            held
+        )
+        XCTAssertEqual(held.releaseLocation(origin: origin, current: drifted), origin)
+    }
+
+    /// A larger, deliberate move must retain the existing local selection
+    /// escape hatch instead of committing herdr's remote context click.
     func testHerdrHoldDragChangesFromRightClickToTextSelection() {
         let held = TerminalInputModifiers.longPressPlan(
             isMouseCaptured: false,
             prefersRemotePointerInput: true
         )
 
-        XCTAssertEqual(
-            TerminalInputModifiers.longPressDragPlan(current: held, movement: 11),
-            held
-        )
-        let dragged = TerminalInputModifiers.longPressDragPlan(current: held, movement: 12)
+        let dragged = TerminalInputModifiers.longPressDragPlan(current: held, movement: 24)
         XCTAssertEqual(dragged.button, GHOSTTY_MOUSE_LEFT)
         XCTAssertEqual(dragged.modifiers, .shift)
         XCTAssertTrue(dragged.selectsText)
         XCTAssertTrue(dragged.pressesOnRecognition)
+        XCTAssertEqual(
+            dragged.releaseLocation(
+                origin: CGPoint(x: 40, y: 100),
+                current: CGPoint(x: 80, y: 140)
+            ),
+            CGPoint(x: 80, y: 140)
+        )
     }
 
     func testOpenURLActionIsClaimedSoGhosttyCannotBypassHostURLPolicy() {

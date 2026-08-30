@@ -43,11 +43,6 @@
             _ key: UIKey,
             action: ghostty_input_action_e
         ) {
-            guard let surface else {
-                TerminalDebugLog.log(.input, "uikit key ignored: missing surface")
-                return
-            }
-
             let filteredModifierFlags = filteredModifierFlags(for: key)
             let isCommandModified = filteredModifierFlags.contains(.command)
             let mods = TerminalInputModifiers(from: filteredModifierFlags)
@@ -82,6 +77,15 @@
                 if let keyboardZoomDirection {
                     scheduleViewportRefreshAfterKeyboardZoom(keyboardZoomDirection)
                 }
+                return
+            }
+
+            // Regression: OpenCode's agent-cycle Tab/Shift-Tab could disappear
+            // during a surface rebuild. In-memory control sequences do not need
+            // a rendered surface, so the surface guard must remain after their
+            // direct-delivery path.
+            guard let surface else {
+                TerminalDebugLog.log(.input, "uikit key ignored: missing surface")
                 return
             }
 
@@ -151,7 +155,7 @@
             return true
         }
 
-        private func handleDirectInputIfNeeded(
+        internal func handleDirectInputIfNeeded(
             _ delivery: TerminalHardwareKeyDelivery,
             action: ghostty_input_action_e,
             isCommandModified: Bool,

@@ -9,7 +9,7 @@ enum TerminalTouchScrollOwner {
 }
 
 /// A content-free decision supplied by the host for one touch-scroll gesture.
-/// Mouse-capturing applications still bypass this and receive wheel input.
+/// Mouse-capturing applications bypass this and receive wheel input.
 public enum TerminalTouchScrollDestination: Equatable, Sendable {
     case terminal
     case localScrollback

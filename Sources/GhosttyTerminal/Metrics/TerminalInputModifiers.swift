@@ -160,7 +160,10 @@ struct TerminalTapEventPlan: Equatable {
 }
 
 struct TerminalLongPressEventPlan: Equatable {
-    static let selectionDragThreshold: CGFloat = 12
+    /// Direct-touch holds accumulate small post-recognition drift even when
+    /// the person intends a context click. Keep that jitter below one normal
+    /// terminal row from silently converting a workspace hold into selection.
+    static let selectionDragThreshold: CGFloat = 24
 
     let button: ghostty_input_mouse_button_e
     let modifiers: TerminalInputModifiers
@@ -169,4 +172,12 @@ struct TerminalLongPressEventPlan: Equatable {
     /// Sending their press at recognition means changing into a selection drag
     /// must release it, which opens the remote menu alongside the local range.
     let pressesOnRecognition: Bool
+
+    /// A deferred remote context click belongs to the row where the hold was
+    /// recognized. Selection drags follow the finger to their final endpoint.
+    /// Using the release point for both can open an adjacent pane's menu when
+    /// a stationary workspace hold drifts by a few pixels.
+    func releaseLocation(origin: CGPoint?, current: CGPoint) -> CGPoint {
+        selectsText ? current : origin ?? current
+    }
 }

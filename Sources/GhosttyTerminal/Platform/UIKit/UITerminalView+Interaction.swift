@@ -399,9 +399,19 @@
 
         private func finishTerminalSelection(at location: CGPoint, showMenu: Bool) {
             guard let surface else { return }
+            let plan = TerminalLongPressEventPlan(
+                button: terminalLongPressButton,
+                modifiers: TerminalInputModifiers(rawValue: terminalSelectionModifiers.rawValue),
+                selectsText: terminalLongPressSelectsText,
+                pressesOnRecognition: terminalLongPressButtonIsDown
+            )
+            let releaseLocation = plan.releaseLocation(
+                origin: terminalLongPressOrigin,
+                current: location
+            )
             surface.sendMousePos(
-                x: location.x,
-                y: location.y,
+                x: releaseLocation.x,
+                y: releaseLocation.y,
                 mods: terminalSelectionModifiers
             )
             if terminalLongPressButtonIsDown {
@@ -462,11 +472,20 @@
 
                 let isMouseCaptured = surface?.isMouseCaptured == true
                 if isMouseCaptured || prefersRemotePointerInput {
+                    // A remote-pointer surface is authoritative for the full
+                    // gesture. Herdr renders the focused child itself, and its
+                    // capture bit can briefly drop while that child changes;
+                    // consulting local scrollback in that gap consumes the
+                    // swipe without moving the server-rendered UI.
                     touchScrollOwner = .terminal
                 } else if let touchScrollContextProvider {
                     // The exact-client query is asynchronous. Keep the gesture
                     // undecided and buffer movement until it returns; choosing
-                    // here would repeat build 6's stale-snapshot race.
+                    // here would repeat build 6's stale-snapshot race. Herdr
+                    // opts into this while captured because its outer mouse
+                    // mode remains enabled even when the focused child is a
+                    // shell; the provider distinguishes that child without
+                    // inspecting terminal bytes.
                     touchScrollOwner = .undecided
                     let generation = touchScrollGestureGeneration
                     touchScrollContextTask = Task { @MainActor [weak self] in
@@ -567,8 +586,9 @@
             let buffered = bufferedTouchScroll
             bufferedTouchScroll = .zero
             if surface?.isMouseCaptured == true || prefersRemotePointerInput {
-                // Mouse reporting can turn on while the remote query is in
-                // flight. The live surface wins: a mouse-aware TUI owns scroll.
+                // Mouse reporting can turn on while the query is in flight;
+                // herdr's explicit remote-pointer preference also survives a
+                // transient capture-bit drop. Either condition owns the drag.
                 touchScrollOwner = .terminal
                 sendTerminalScroll(buffered)
             } else {
