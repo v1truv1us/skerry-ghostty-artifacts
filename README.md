@@ -27,7 +27,7 @@ Add to your `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/v1truv1us/skerry-ghostty-artifacts.git",
-        exact: "0.2.0"
+        exact: "0.2.1"
     ),
 ]
 ```
