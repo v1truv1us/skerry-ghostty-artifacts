@@ -38,7 +38,7 @@ Then add the product you need:
 .target(
     name: "YourTarget",
     dependencies: [
-        .product(name: "GhosttyTerminal", package: "libghostty-spm"),
+        .product(name: "GhosttyTerminal", package: "skerry-ghostty-artifacts"),
     ]
 )
 ```
