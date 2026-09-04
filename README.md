@@ -21,6 +21,10 @@ Swift Package wrapping [Ghostty](https://ghostty.org)'s terminal emulator librar
 
 ## Installation
 
+Maintainers: see [terminal fixes and open work](MAINTENANCE.md),
+[dependency notices and remaining distribution tasks](NOTICES.md), and
+[source/binary provenance](UPSTREAM.md).
+
 Add to your `Package.swift`:
 
 ```swift

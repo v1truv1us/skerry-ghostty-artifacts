@@ -1,0 +1,211 @@
+{
+  "ghostty_ref": "70c498ac3273661aebf6cce9904c0d42b2e5d299",
+  "artifact_sha256": "ccbf7d5f7de55eeb5031c6bf46d0e9b09de9b11bfae532b3093d8ef09832a3cc",
+  "scope": "Collected notices; not a complete distribution approval. See NOTICES.md for gaps.",
+  "dependencies": [
+    {
+      "name": "libxev",
+      "zig_package_hash": "libxev-0.0.0-86vtcwIRFADbH4hk-EjROXxlrKIRPQdA41XiTSytYO-F",
+      "cached_archive_sha256": "41f059923fb7138d6f3c6beddfdc3e5db4da4b81e11e43e910b82d7ec9383984",
+      "notices": [
+        "Notices/libxev/LICENSE"
+      ]
+    },
+    {
+      "name": "vaxis",
+      "zig_package_hash": "vaxis-0.6.0-BWNV_CrbCQCscGpzsAlR402rYQ_tV3aAl081c2iRRkka",
+      "cached_archive_sha256": "b543786e82d63f219612a2c49044638779f3c8f47b0dc8c30d8d6050931595ed",
+      "notices": [
+        "Notices/vaxis/LICENSE"
+      ]
+    },
+    {
+      "name": "zig-objc",
+      "zig_package_hash": "zig_objc-0.0.0-Ir_Sp9gsAQCPAJc0oF5xoWePHWP6Y6tCphDeyNUThJoi",
+      "cached_archive_sha256": "3314f0fe1bddd2c386544558328761adf9f05d5aa6b0d46ec71632e29eb1cfc2",
+      "notices": [
+        "Notices/zig-objc/LICENSE"
+      ]
+    },
+    {
+      "name": "uucode",
+      "zig_package_hash": "uucode-0.2.0-ZZjBPlK5VADj7fdoq7G8LIHzD5o6FSkcBXXrRWr4jnrA",
+      "cached_archive_sha256": "3c571e2e2c1dd6d67d59e7a29322c718a90465ccb0df362e14feafcdde555ed0",
+      "notices": [
+        "Notices/uucode/LICENSE.md"
+      ]
+    },
+    {
+      "name": "zf",
+      "zig_package_hash": "zf-0.11.0-OIRy8X-RAAAwaRXHMYpj2uvBnuGTZWEE_3V7acqHQNtW",
+      "cached_archive_sha256": "17dcfc79623c072a9df298c2a2b8309059657ebb6805a86b62fb0eaff942cf1a",
+      "notices": [
+        "Notices/zf/LICENSE"
+      ]
+    },
+    {
+      "name": "freetype",
+      "zig_package_hash": "N-V-__8AAKLKpwC4H27Ps_0iL3bPkQb-z6ZVSrB-x_3EEkub",
+      "cached_archive_sha256": "eebf7c4d885d3dcbdf57593932fc7a5d0ee6078ceadb117d32457ad74da0fd92",
+      "notices": [
+        "Notices/freetype/LICENSE.TXT",
+        "Notices/freetype/docs-FTL.TXT"
+      ]
+    },
+    {
+      "name": "libpng",
+      "zig_package_hash": "N-V-__8AAJrvXQCqAT8Mg9o_tk6m0yf5Fz-gCNEOKLyTSerD",
+      "cached_archive_sha256": "1c343e4d933352e1acdb7c873a6b1038fc17c2db1fed5eae59d26f6bf57d587f",
+      "notices": [
+        "Notices/libpng/LICENSE"
+      ]
+    },
+    {
+      "name": "zlib",
+      "zig_package_hash": "N-V-__8AAB0eQwD-0MdOEBmz7intriBReIsIDNlukNVoNu6o",
+      "cached_archive_sha256": "afedfc21da5486fe7124a8de8cf496f912dafb8de743c9dd921981d0847481e9",
+      "notices": [
+        "Notices/zlib/LICENSE"
+      ]
+    },
+    {
+      "name": "oniguruma",
+      "zig_package_hash": "N-V-__8AAHjwMQDBXnLq3Q2QhaivE0kE2aD138vtX2Bq1g7c",
+      "cached_archive_sha256": "92b8d9ba88c3f553da73bbaa643e70d3163d7a57f98715b8d7a0b73b22a4a2e5",
+      "notices": [
+        "Notices/oniguruma/COPYING"
+      ]
+    },
+    {
+      "name": "highway",
+      "zig_package_hash": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE",
+      "cached_archive_sha256": "cf0f68a4275e59282383f46289da017166ea4cbbced04ad2af1b79f3eede3cc2",
+      "notices": [
+        "Notices/highway/LICENSE",
+        "Notices/highway/LICENSE-BSD3"
+      ]
+    },
+    {
+      "name": "wuffs",
+      "zig_package_hash": "N-V-__8AAAzZywE3s51XfsLbP9eyEw57ae9swYB9aGB6fCMs",
+      "cached_archive_sha256": "76043100c6588f107de6e10038a8c5d925a26065304a4143d9da8c050e1452eb",
+      "notices": [
+        "Notices/wuffs/LICENSE",
+        "Notices/wuffs/LICENSE-APACHE",
+        "Notices/wuffs/LICENSE-MIT"
+      ]
+    },
+    {
+      "name": "pixels",
+      "zig_package_hash": "N-V-__8AADYiAAB_80AWnH1AxXC0tql9thT-R-DYO1gBqTLc",
+      "cached_archive_sha256": "47f217a26e815226bc045409727d3d78af7aad9bd7a3f53cfa48fd085575e70b",
+      "notices": [
+        "Notices/pixels/LICENSE"
+      ]
+    },
+    {
+      "name": "jetbrains-mono",
+      "zig_package_hash": "N-V-__8AAIC5lwAVPJJzxnCAahSvZTIlG-HhtOvnM1uh-66x",
+      "cached_archive_sha256": "909b7d55356a2968ea5ea289a550515aaa11dce5aa920d02c616ef02d5da982a",
+      "notices": [
+        "Notices/jetbrains-mono/OFL.txt"
+      ]
+    },
+    {
+      "name": "nerd-fonts",
+      "zig_package_hash": "N-V-__8AAMVLTABmYkLqhZPLXnMl-KyN38R8UVYqGrxqO26s",
+      "cached_archive_sha256": "f0830fb4ef816f278967c4702421dbde51af8b0bcff976f077e734b0bc218a8a",
+      "notices": [
+        "Notices/nerd-fonts/LICENSE"
+      ]
+    },
+    {
+      "name": "zigimg",
+      "zig_package_hash": "zigimg-0.1.0-8_eo2oyaFwBZwJpmqPkCfVXWBrHcqbYwmrp1I6bTD3lI",
+      "cached_archive_sha256": "6862d9907a6456d30d71a6ae8ea86bf3c164ae85a5054ab2af95681ef767a137",
+      "notices": [
+        "Notices/zigimg/LICENSE"
+      ]
+    }
+  ],
+  "text_normalization": "Copied text retains license content; trailing whitespace/newlines at EOF are normalized to one newline.",
+  "upstream_notices": [
+    {
+      "component": "z2d",
+      "repository": "vancluever/z2d",
+      "revision": "7dbae85c81784dba9988320bf9543ed9a81350c8",
+      "path": "LICENSE",
+      "local_path": "Notices/z2d/LICENSE"
+    },
+    {
+      "component": "z2d",
+      "repository": "vancluever/z2d",
+      "revision": "7dbae85c81784dba9988320bf9543ed9a81350c8",
+      "path": "COPYING",
+      "local_path": "Notices/z2d/COPYING"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "licenses/LICENSE_Bjoern_Hoehrmann",
+      "local_path": "Notices/uucode/licenses/LICENSE_Bjoern_Hoehrmann"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "licenses/LICENSE_unicode",
+      "local_path": "Notices/uucode/licenses/LICENSE_unicode"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_go_runewidth.txt",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_go_runewidth.txt"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_unicode_width.txt",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_unicode_width.txt"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_uniseg.txt",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_uniseg.txt"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_utf8proc.md",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_utf8proc.md"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_wcwidth.txt",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_wcwidth.txt"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_zg.txt",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_zg.txt"
+    },
+    {
+      "component": "uucode",
+      "repository": "jacobsandlund/uucode",
+      "revision": "2826a37a4562284fdacd8fa029d49509cc9bffcd",
+      "path": "resources/wcwidth/LICENSE_ziglyph.txt",
+      "local_path": "Notices/uucode/resources/wcwidth/LICENSE_ziglyph.txt"
+    }
+  ]
+}

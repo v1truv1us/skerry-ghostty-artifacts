@@ -22,14 +22,13 @@ SHA-256 and SwiftPM checksum
 Ghostty translations are disabled for this embedded build, and the build gate
 audits every static archive to prove GNU libintl symbols are absent.
 
-Until that exact zip is published at a Skerry-owned immutable URL,
-`Package.swift` (the production manifest) continues to point its `libghostty`
-binary target at the prior upstream published release:
-`https://github.com/Lakr233/libghostty-spm/releases/download/storage.1.3.1/GhosttyKit.xcframework.zip`
-(sha256 `cfb3fbbfe1365e4c90e01969e2576b4dfa33f04975bcafd84c6368514f791fe9`,
-checksum matched against upstream's own `Package.swift` and verified by
-SwiftPM on fetch). `Package.local.swift` targets the newly built local
-`BinaryTarget/GhosttyKit.xcframework` for development and verification.
+Published 2026-09-04: `Package.swift` resolves the exact checksum above from
+the immutable Skerry-owned binary release:
+`https://github.com/v1truv1us/skerry-ghostty-artifacts/releases/download/ghostty-70c498ac-2/GhosttyKit.xcframework.zip`.
+The release also contains `BUILD_INFO.txt`. Public Swift package tag `0.2.1`
+is immutable and has 119 passing host-package tests with a fresh binary
+download. `Package.local.swift` targets `BinaryTarget/GhosttyKit.xcframework`
+for explicit source-build development and verification.
 
 Local iOS and package verification run through
 `Scripts/with-local-ghostty-manifest.sh`, which temporarily swaps
@@ -39,7 +38,7 @@ wrapper fails fast with a pointer to `build.sh` if the local XCFramework is
 missing, so `bun run ios:test`, `ios:build`, `ios:test:ui:*`, `ghostty:test`,
 and `verify:local` build against the patched artifact without a manual swap.
 
-The newly built XCFramework is not published by Skerry itself yet. Before
-redistribution, review Ghostty and all statically linked dependency licenses
-and notices; this provenance record is not a substitute for a legal licensing
-review.
+The library's terminal fixes, ownership boundaries and remaining work are in
+[MAINTENANCE.md](MAINTENANCE.md). Collected dependency notices, source identities
+and unresolved distribution tasks are in [NOTICES.md](NOTICES.md). Publication
+and automated tests do not establish completion of those distribution tasks.
