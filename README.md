@@ -25,7 +25,10 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Lakr233/libghostty-spm.git", from: "0.1.0"),
+    .package(
+        url: "https://github.com/v1truv1us/skerry-ghostty-artifacts.git",
+        exact: "0.2.0"
+    ),
 ]
 ```
 
